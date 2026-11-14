@@ -1,84 +1,83 @@
 "use client";
 
-import { useEffect, useState, type RefObject } from "react";
-
 export const MAX_EDGE = 1024;
 const JPEG_QUALITY = 0.8;
 
-export type CameraState =
-  | { status: "starting" }
-  | { status: "ready" }
-  | { status: "unavailable"; reason: string };
+/** Why the camera can't be used, as a speakable sentence. */
+export class CameraError extends Error {
+  constructor(public reason: string) {
+    super(reason);
+  }
+}
 
-/** Starts the rear camera into `videoRef`, and restarts it if the track ends. */
-export function useCamera(videoRef: RefObject<HTMLVideoElement | null>): CameraState {
-  const [state, setState] = useState<CameraState>({ status: "starting" });
-  const [attempt, setAttempt] = useState(0);
+/** Time for auto-exposure and focus to settle after the camera starts. */
+const WARMUP_MS = 600;
+const START_TIMEOUT_MS = 5000;
 
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-    let cancelled = false;
+function reasonFor(err: unknown): string {
+  const name = (err as DOMException)?.name;
+  if (name === "NotAllowedError" || name === "SecurityError") return "Camera permission was turned off.";
+  if (name === "NotFoundError" || name === "OverconstrainedError") return "No camera was found.";
+  if (name === "NotReadableError") return "Another app is using the camera.";
+  return "The camera couldn't start.";
+}
 
-    (async () => {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setState({
-          status: "unavailable",
-          reason: window.isSecureContext
-            ? "This browser can't use the camera."
-            : "The camera needs a secure https connection.",
-        });
-        return;
-      }
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        const video = videoRef.current;
-        if (!video) return;
-        video.srcObject = stream;
-        await video.play().catch(() => {});
-        stream.getVideoTracks()[0]?.addEventListener("ended", () => {
-          if (!cancelled) setAttempt((n) => n + 1);
-        });
-        setState({ status: "ready" });
-      } catch (err) {
-        const name = (err as DOMException)?.name;
-        setState({
-          status: "unavailable",
-          reason:
-            name === "NotAllowedError"
-              ? "Camera permission was turned off."
-              : name === "NotFoundError" || name === "OverconstrainedError"
-                ? "No camera was found."
-                : "The camera couldn't start.",
-        });
-      }
-    })();
+/** Throws a CameraError right away if this browser can't use the camera at all. */
+export function cameraSupportError(): CameraError | null {
+  if (typeof navigator === "undefined") return null;
+  if (typeof navigator.mediaDevices?.getUserMedia === "function") return null;
+  return new CameraError(
+    window.isSecureContext ? "This browser can't use the camera." : "The camera needs a secure https connection.",
+  );
+}
 
-    return () => {
-      cancelled = true;
-      stream?.getTracks().forEach((t) => t.stop());
-    };
-  }, [videoRef, attempt]);
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(t);
+      resolve();
+    });
+  });
+}
 
-  // Mobile browsers may kill the camera in the background; restart on return.
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState !== "visible") return;
-      const s = videoRef.current?.srcObject as MediaStream | null;
-      const live = s?.getVideoTracks().some((t) => t.readyState === "live");
-      if (!live) setAttempt((n) => n + 1);
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [videoRef]);
+/**
+ * Turns the camera on, lets exposure settle, takes one frame, and turns the
+ * camera off again. The camera is never left running. Shows the live view in
+ * `video` while it is on. Returns base64 JPEG (no data: prefix), or null if
+ * aborted. Throws CameraError with a speakable reason on failure.
+ */
+export async function captureOnce(video: HTMLVideoElement, signal?: AbortSignal): Promise<string | null> {
+  const unsupported = cameraSupportError();
+  if (unsupported) throw unsupported;
 
-  return state;
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    });
+  } catch (err) {
+    throw new CameraError(reasonFor(err));
+  }
+
+  try {
+    if (signal?.aborted) return null;
+    video.srcObject = stream;
+    await video.play().catch(() => {});
+    const started = Date.now();
+    while (!video.videoWidth && Date.now() - started < START_TIMEOUT_MS && !signal?.aborted) await wait(50, signal);
+    if (signal?.aborted) return null;
+    if (!video.videoWidth) throw new CameraError("The camera didn't send a picture.");
+    await wait(WARMUP_MS, signal);
+    if (signal?.aborted) return null;
+    const frame = captureFrame(video);
+    if (!frame) throw new CameraError("The camera didn't send a picture.");
+    return frame;
+  } finally {
+    stream.getTracks().forEach((t) => t.stop());
+    video.srcObject = null;
+  }
 }
 
 function toJpegBase64(source: CanvasImageSource, width: number, height: number): string {

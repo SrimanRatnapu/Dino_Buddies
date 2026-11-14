@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import type { DescribeRequest, DescribeSuccess } from "@/shared/contract";
-import { captureFrame, fileToBase64, useCamera } from "./camera";
+import { CameraError, cameraSupportError, captureOnce, fileToBase64 } from "./camera";
 import { cue, unlockCues } from "./cues";
 import { clientMockEnabled, describeImage } from "./describeClient";
 import { ListenError, listenErrorMessage, listenOnce, parseCommand, recognitionSupported } from "./listen";
@@ -11,7 +11,8 @@ import { spokenText, type ResultKind } from "./spokenText";
 
 export const APP_NAME = "Wildlife Described";
 
-type Phase = "idle" | "looking" | "listening" | "result" | "error";
+/** "capturing": the camera is on for about a second to take one photo. */
+type Phase = "idle" | "capturing" | "looking" | "listening" | "result" | "error";
 
 interface Shown {
   result: DescribeSuccess;
@@ -48,7 +49,6 @@ export default function App() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const questionRef = useRef<HTMLInputElement>(null);
-  const camera = useCamera(videoRef);
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [shown, setShown] = useState<Shown | null>(null);
@@ -58,6 +58,10 @@ export default function App() {
   const [voiceOn, setVoiceOn] = useState(true);
   const [typing, setTyping] = useState(false);
   const [mock, setMock] = useState(false);
+  /** Set once the camera has failed; Describe then opens the photo picker instead. */
+  const [cameraProblem, setCameraProblem] = useState<string | null>(null);
+  /** The photo being described, shown in place of a live feed. */
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   // Values read after an await, where closure state could be stale.
   const imageRef = useRef<string | null>(null);
@@ -67,12 +71,21 @@ export default function App() {
   const requestRef = useRef<AbortController | null>(null);
   const listenRef = useRef<AbortController | null>(null);
   const speakId = useRef(0);
+  const captureRef = useRef<AbortController | null>(null);
+  const cameraProblemRef = useRef<string | null>(null);
 
   useEffect(() => {
     const v = readPref("voiceOn", true);
     setVoiceOn(v);
     voiceOnRef.current = v;
     setMock(clientMockEnabled());
+    const unsupported = cameraSupportError();
+    if (unsupported) {
+      cameraProblemRef.current = unsupported.reason;
+      setCameraProblem(unsupported.reason);
+    }
+    // Never leave the camera on if the page goes away mid-capture.
+    return () => captureRef.current?.abort();
   }, []);
 
   /** Polite screen-reader announcement; blanking first re-announces repeats. */
@@ -141,6 +154,7 @@ export default function App() {
 
   async function sendImage(image: string) {
     imageRef.current = image;
+    setPhotoUrl(`data:image/jpeg;base64,${image}`);
     baseRef.current = null;
     await run({ image, mode: "default" }, "describe");
   }
@@ -152,19 +166,54 @@ export default function App() {
   function describe(fromTap = true) {
     unlock();
     quiet();
-    const frame = camera.status === "ready" ? captureFrame(videoRef.current) : null;
-    if (!frame) {
+    if (cameraProblemRef.current) {
       if (fromTap) {
-        // No live camera: open the phone's camera or photo picker instead.
+        // Camera unusable: open the phone's camera app or photo picker instead.
         fileRef.current?.click();
       } else {
         cue.error();
-        void say("The camera isn't on. Tap Describe at the bottom of the screen to take a photo.");
+        void say(`${cameraProblemRef.current} Tap Describe at the bottom of the screen to choose a photo.`);
       }
       return;
     }
-    cue.capture();
-    void sendImage(frame);
+    void (async () => {
+      const frame = await takePhoto();
+      if (frame) await sendImage(frame);
+    })();
+  }
+
+  /**
+   * Turns the camera on, takes one photo, turns it off. Returns null if
+   * cancelled or if the camera failed (the failure is spoken and shown).
+   */
+  async function takePhoto(): Promise<string | null> {
+    const video = videoRef.current;
+    if (!video || captureRef.current) return null;
+    const ctrl = new AbortController();
+    captureRef.current = ctrl;
+    setErrorText("");
+    setTyping(false);
+    setPhase("capturing");
+    void say("Hold still.");
+    try {
+      const frame = await captureOnce(video, ctrl.signal);
+      if (!frame || ctrl.signal.aborted) return null;
+      cue.capture();
+      return frame;
+    } catch (err) {
+      if (ctrl.signal.aborted) return null;
+      const reason = err instanceof CameraError ? err.reason : "The camera couldn't start.";
+      cameraProblemRef.current = reason;
+      setCameraProblem(reason);
+      cue.error();
+      const msg = `${reason} Tap Describe to choose a photo instead.`;
+      setErrorText(msg);
+      setPhase("error");
+      void say(msg);
+      return null;
+    } finally {
+      if (captureRef.current === ctrl) captureRef.current = null;
+    }
   }
 
   async function onFile(e: ChangeEvent<HTMLInputElement>) {
@@ -196,18 +245,19 @@ export default function App() {
     );
   }
 
-  function askQuestion(text: string, fromTap = true) {
+  async function askQuestion(text: string, fromTap = true) {
     let image = imageRef.current;
     const base = baseRef.current;
     if (!image) {
       // Asked before any photo: take one now and answer about it.
-      image = camera.status === "ready" ? captureFrame(videoRef.current) : null;
-      if (!image) {
+      if (cameraProblemRef.current) {
         describe(fromTap);
         return;
       }
-      cue.capture();
+      image = await takePhoto();
+      if (!image) return;
       imageRef.current = image;
+      setPhotoUrl(`data:image/jpeg;base64,${image}`);
     }
     void run(
       {
@@ -235,6 +285,8 @@ export default function App() {
 
   function cancel() {
     unlock();
+    captureRef.current?.abort();
+    captureRef.current = null;
     requestRef.current?.abort();
     requestRef.current = null;
     listenRef.current?.abort();
@@ -272,7 +324,7 @@ export default function App() {
       else if (cmd.kind === "repeat") repeat();
       else if (cmd.kind === "more" && baseRef.current) more();
       else if (cmd.kind === "describe") describe(false);
-      else askQuestion(cmd.kind === "question" ? cmd.text : heard, false);
+      else void askQuestion(cmd.kind === "question" ? cmd.text : heard, false);
     } catch (err) {
       if (listenRef.current !== ctrl) return;
       listenRef.current = null;
@@ -290,7 +342,7 @@ export default function App() {
     const text = questionRef.current?.value.trim() ?? "";
     if (!text) return;
     quiet();
-    askQuestion(text);
+    void askQuestion(text);
   }
 
   function toggleVoice() {
@@ -331,7 +383,7 @@ export default function App() {
         return;
       }
       const a = actions.current;
-      const busy = phaseRef.current === "looking" || phaseRef.current === "listening";
+      const busy = phaseRef.current === "capturing" || phaseRef.current === "looking" || phaseRef.current === "listening";
       const k = e.key.toLowerCase();
       if (k === "escape") busy ? a.cancel() : a.stop();
       else if (busy || !target?.closest("[data-shortcuts]")) return;
@@ -347,7 +399,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const busy = phase === "looking" || phase === "listening";
+  const busy = phase === "capturing" || phase === "looking" || phase === "listening";
   const r = shown?.result;
 
   return (
@@ -367,13 +419,33 @@ export default function App() {
       </header>
 
       <main className="stage" data-shortcuts>
-        <video ref={videoRef} className="preview" autoPlay muted playsInline aria-hidden="true" />
+        {/* Live only while a photo is being taken; the camera is off otherwise. */}
+        <video
+          ref={videoRef}
+          className="preview preview-live"
+          data-live={phase === "capturing"}
+          muted
+          playsInline
+          aria-hidden="true"
+        />
+        {photoUrl && phase !== "capturing" && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img className="preview" src={photoUrl} alt="" aria-hidden="true" />
+        )}
 
         {phase === "idle" && (
           <div className="hint">
-            {camera.status === "starting" && <p>Starting camera…</p>}
-            {camera.status === "unavailable" && <p>{camera.reason} Describe will open your camera app or photos.</p>}
-            {camera.status === "ready" && <p>Point your phone at an exhibit or animal, then tap Describe.</p>}
+            {cameraProblem ? (
+              <p>{cameraProblem} Describe will open your camera app or photos.</p>
+            ) : (
+              <p>Point your phone at an exhibit or animal, then tap Describe. The camera turns on only to take the photo.</p>
+            )}
+          </div>
+        )}
+
+        {phase === "capturing" && (
+          <div className="hint" aria-hidden="true">
+            <p>Hold still…</p>
           </div>
         )}
 

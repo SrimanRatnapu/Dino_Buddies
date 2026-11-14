@@ -7,7 +7,8 @@ Owner: A (Experience). This is the design system the UI code follows. It merges 
 2. **The bottom of the screen is always the main action.** One huge button sits in the same place on every screen: Describe, Cancel, Try again or Describe new. Users find it by thumb, not by sight.
 3. **Few controls, always in the same places.** At most three secondary buttons, in one row, directly above the main action.
 4. **Say what's uncertain.** If confidence is not `high`, the caveat is spoken first and shown first, in a caution color.
-5. **Low vision is a first-class user.** Large type, very high contrast, and a camera preview so a sighted companion or low-vision user can aim.
+5. **Low vision is a first-class user.** Large type, very high contrast, and the photo that was described stays on screen so a low-vision user or a companion can see what the app looked at.
+6. **The camera is on only to take a photo.** No continuous feed: Describe turns it on, waits about 0.6 s for exposure, takes one frame and turns it off. That saves battery, keeps the camera light off, and means only the photo the user chose ever leaves the phone.
 
 ## Tokens (`/styles/globals.css`)
 | Token | Value | Use | Contrast on black |
@@ -31,7 +32,8 @@ Targets: secondary buttons at least 76px tall. The main button takes at least 30
 ## Screens (one page, five states)
 | State | Stage shows | Controls | Sound and voice |
 |---|---|---|---|
-| **Capture** (`idle`) | Live camera and one hint line | Ask, Use a photo, **Describe** | none |
+| **Capture** (`idle`) | The last photo (or nothing) and one hint line. The camera is off. | Ask, Use a photo, **Describe** | none |
+| **Taking photo** (`capturing`) | Live camera for about a second, "Hold still…" | **Cancel** | "Hold still", then the shutter tone when the frame is taken. The camera turns off straight after. |
 | **Looking** | Pulsing ring, "Looking…" | **Cancel** | shutter tone, "Looking now", then "Still looking" after 8s |
 | **Listening** (follow-up) | Pulsing mic, "Listening…" | **Cancel** | rising two-note tone, mic opens 300ms later |
 | **Result** | Subject title, caveat, description, size, fun fact | Repeat or Stop, Tell me more, Ask, **Describe new** | done chime, result read aloud |

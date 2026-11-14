@@ -141,6 +141,11 @@ body {
   background: var(--surface);
 }
 
+/* The video element is only live while a photo is being taken. */
+.preview-live:not([data-live="true"]) {
+  visibility: hidden;
+}
+
 .app[data-phase="result"] .preview,
 .app[data-phase="error"] .preview,
 .app[data-phase="looking"] .preview,
