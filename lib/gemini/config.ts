@@ -9,6 +9,13 @@ export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 export const GEMINI_FALLBACK_MODEL =
   process.env.GEMINI_FALLBACK_MODEL || "gemini-3.1-flash-lite";
 
+/**
+ * Model for /api/aim (live aiming guidance). It runs about once a second, so
+ * it should be the fastest model available, not the best describer.
+ */
+export const AIM_MODEL = process.env.AIM_MODEL || "gemini-3.1-flash-lite";
+export const AIM_TIMEOUT_MS = Number(process.env.AIM_TIMEOUT_MS || 6000);
+
 /** Server-side hard timeout for one Gemini call. */
 export const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 15000);
 

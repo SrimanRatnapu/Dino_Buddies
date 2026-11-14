@@ -1,0 +1,149 @@
+// "Guide me": live aiming help. The camera stays on while guiding. About once
+// a second a small frame goes to POST /api/aim, which says which way to move
+// the phone. After two "ready" answers in a row, one full photo is taken and
+// the camera turns off. The user can take the photo early at any time, and a
+// timeout or repeated failures take it anyway, so nobody is left stuck.
+
+import type { AimMove, AimResponse, ApiError } from "@/shared/contract";
+import aimFixtures from "@/fixtures/aim.json";
+import { captureFrame, openCamera, sleep } from "./camera";
+import { clientMockEnabled } from "./describeClient";
+
+/** Aiming frames are small: guidance needs layout, not detail. */
+const AIM_EDGE = 512;
+const AIM_QUALITY = 0.6;
+/** At most about one request a second. */
+const MIN_INTERVAL_MS = 900;
+const REQUEST_TIMEOUT_MS = 7000;
+/** Give up guiding and take the photo after this long. */
+export const GUIDE_TIMEOUT_MS = 25_000;
+/** Ready answers needed in a row before taking the photo. */
+const READY_STREAK = 2;
+const SETTLE_MS = 400;
+
+export type GuideEnd = "ready" | "manual" | "timeout" | "unavailable";
+
+export interface GuideResult {
+  /** Full-size photo, base64 JPEG. */
+  frame: string;
+  how: GuideEnd;
+  /** What the aiming model last said was in view, if anything. */
+  subject: string;
+}
+
+/** Spoken instruction for an aiming reply. */
+export function instructionFor(aim: AimResponse, readyCount: number): string {
+  if (aim.status === "ready") return readyCount >= READY_STREAK ? "Got it." : "Good. Hold still.";
+  if (aim.status === "searching") return "I don't see an exhibit yet. Turn slowly.";
+  const moves: Record<AimMove, string> = {
+    left: "Turn a little to the left.",
+    right: "Turn a little to the right.",
+    up: "Tilt the phone up.",
+    down: "Tilt the phone down.",
+    back: "Step back a little.",
+    closer: "Move a little closer.",
+    none: "Hold still.",
+  };
+  return moves[aim.move];
+}
+
+/** AbortSignal.any, with a fallback for older Safari. */
+function anySignal(signals: AbortSignal[]): AbortSignal {
+  if ("any" in AbortSignal) return AbortSignal.any(signals);
+  const c = new AbortController();
+  for (const s of signals) {
+    if (s.aborted) {
+      c.abort();
+      break;
+    }
+    s.addEventListener("abort", () => c.abort(), { once: true });
+  }
+  return c.signal;
+}
+
+function timeoutSignal(ms: number): AbortSignal {
+  const c = new AbortController();
+  setTimeout(() => c.abort(), ms);
+  return c.signal;
+}
+
+let mockStep = 0;
+
+async function requestAim(image: string, signal: AbortSignal): Promise<AimResponse | null> {
+  if (clientMockEnabled()) {
+    await sleep(500, signal);
+    const seq = aimFixtures.sequence as AimResponse[];
+    return signal.aborted ? null : seq[mockStep++ % seq.length];
+  }
+  const timeout = timeoutSignal(REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch("/api/aim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image }),
+      signal: anySignal([signal, timeout]),
+    });
+    const body = (await res.json().catch(() => null)) as AimResponse | ApiError | null;
+    if (res.ok && body && "status" in body) return body;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Guides the user to a good view, then returns one full photo. `stopSignal`
+ * cancels (returns null, camera off). `takeNowSignal` takes the photo
+ * straight away. `onAim` gets each reply as it arrives.
+ * Throws CameraError if the camera can't start.
+ */
+export async function guideToPhoto(
+  video: HTMLVideoElement,
+  stopSignal: AbortSignal,
+  takeNowSignal: AbortSignal,
+  onAim: (aim: AimResponse, readyCount: number) => void,
+): Promise<GuideResult | null> {
+  const stop = await openCamera(video, stopSignal);
+  if (!stop) return null;
+
+  const take = (how: GuideEnd, subject: string): GuideResult | null => {
+    const frame = captureFrame(video);
+    return frame ? { frame, how, subject } : null;
+  };
+
+  try {
+    await sleep(SETTLE_MS, stopSignal);
+    const started = Date.now();
+    const either = anySignal([stopSignal, takeNowSignal]);
+    let ready = 0;
+    let failures = 0;
+    let subject = "";
+
+    while (!stopSignal.aborted) {
+      if (takeNowSignal.aborted) return take("manual", subject);
+      if (Date.now() - started > GUIDE_TIMEOUT_MS) return take("timeout", subject);
+
+      const small = captureFrame(video, AIM_EDGE, AIM_QUALITY);
+      const sent = Date.now();
+      const aim = small ? await requestAim(small, either) : null;
+      if (stopSignal.aborted) return null;
+      if (takeNowSignal.aborted) return take("manual", subject);
+
+      if (!aim) {
+        // Guidance unavailable (not configured, rate limited, offline): don't
+        // leave the user waiting. Take the photo after two failures in a row.
+        if (++failures >= 2) return take("unavailable", subject);
+      } else {
+        failures = 0;
+        if (aim.subject) subject = aim.subject;
+        ready = aim.status === "ready" ? ready + 1 : 0;
+        onAim(aim, ready);
+        if (ready >= READY_STREAK) return take("ready", subject);
+      }
+      await sleep(Math.max(0, MIN_INTERVAL_MS - (Date.now() - sent)), either);
+    }
+    return null;
+  } finally {
+    stop();
+  }
+}

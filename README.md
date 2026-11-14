@@ -31,6 +31,7 @@ Phones only allow camera access over HTTPS. To test on a phone locally, use `npx
 | Path | What |
 |---|---|
 | `app/api/describe/route.ts` | Contract v1 endpoint, mock + real |
+| `app/api/aim/route.ts` | Live aiming guidance for "Guide me" (contract v1.1) |
 | `app/api/speak/route.ts` | Google Cloud TTS, MP3 out |
 | `app/api/health/route.ts` | Status for A and deploys |
 | `lib/gemini/config.ts` | **The one place the model name lives** |

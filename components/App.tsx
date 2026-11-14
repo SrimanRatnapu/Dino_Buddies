@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import type { DescribeRequest, DescribeSuccess } from "@/shared/contract";
+import type { AimMove } from "@/shared/contract";
+import { guideToPhoto, instructionFor } from "./aimGuide";
 import { CameraError, cameraSupportError, captureOnce, fileToBase64 } from "./camera";
 import { cue, unlockCues } from "./cues";
 import { clientMockEnabled, describeImage } from "./describeClient";
@@ -11,8 +13,21 @@ import { spokenText, type ResultKind } from "./spokenText";
 
 export const APP_NAME = "Wildlife Described";
 
-/** "capturing": the camera is on for about a second to take one photo. */
-type Phase = "idle" | "capturing" | "looking" | "listening" | "result" | "error";
+/**
+ * "capturing": the camera is on for about a second to take one photo.
+ * "guiding": the camera is on and the app is telling the user how to aim.
+ */
+type Phase = "idle" | "capturing" | "guiding" | "looking" | "listening" | "result" | "error";
+
+/** What the guiding screen shows: the latest instruction, in large text. */
+interface AimView {
+  text: string;
+  move: AimMove;
+  ready: boolean;
+}
+
+/** Don't repeat the same aiming instruction more often than this. */
+const REPEAT_INSTRUCTION_MS = 4000;
 
 interface Shown {
   result: DescribeSuccess;
@@ -62,6 +77,7 @@ export default function App() {
   const [cameraProblem, setCameraProblem] = useState<string | null>(null);
   /** The photo being described, shown in place of a live feed. */
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [aimView, setAimView] = useState<AimView | null>(null);
 
   // Values read after an await, where closure state could be stale.
   const imageRef = useRef<string | null>(null);
@@ -72,6 +88,9 @@ export default function App() {
   const listenRef = useRef<AbortController | null>(null);
   const speakId = useRef(0);
   const captureRef = useRef<AbortController | null>(null);
+  const guideRef = useRef<AbortController | null>(null);
+  const takeNowRef = useRef<AbortController | null>(null);
+  const lastInstruction = useRef({ text: "", at: 0 });
   const cameraProblemRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -85,7 +104,10 @@ export default function App() {
       setCameraProblem(unsupported.reason);
     }
     // Never leave the camera on if the page goes away mid-capture.
-    return () => captureRef.current?.abort();
+    return () => {
+      captureRef.current?.abort();
+      guideRef.current?.abort();
+    };
   }, []);
 
   /** Polite screen-reader announcement; blanking first re-announces repeats. */
@@ -121,14 +143,14 @@ export default function App() {
     unlockSpeech();
   }
 
-  async function run(req: DescribeRequest, kind: ResultKind, question?: string) {
+  async function run(req: DescribeRequest, kind: ResultKind, question?: string, lead?: string) {
     requestRef.current?.abort();
     const ctrl = new AbortController();
     requestRef.current = ctrl;
     setTyping(false);
     setErrorText("");
     setPhase("looking");
-    void say(WAIT_CUES[kind]);
+    void say(lead ? `${lead} ${WAIT_CUES[kind]}` : WAIT_CUES[kind]);
     const still = window.setTimeout(() => void say("Still looking."), 8000);
 
     const out = await describeImage(req, ctrl.signal);
@@ -152,11 +174,11 @@ export default function App() {
     void say(spokenText(out.data, kind), { cloud: true });
   }
 
-  async function sendImage(image: string) {
+  async function sendImage(image: string, lead?: string) {
     imageRef.current = image;
     setPhotoUrl(`data:image/jpeg;base64,${image}`);
     baseRef.current = null;
-    await run({ image, mode: "default" }, "describe");
+    await run({ image, mode: "default" }, "describe", undefined, lead);
   }
 
   /**
@@ -180,6 +202,81 @@ export default function App() {
       const frame = await takePhoto();
       if (frame) await sendImage(frame);
     })();
+  }
+
+  /**
+   * "Guide me": keeps the camera on and speaks aiming instructions until the
+   * exhibit is fully in view, then takes one photo and describes it.
+   */
+  function guide(fromTap = true) {
+    unlock();
+    quiet();
+    if (cameraProblemRef.current || captureRef.current || guideRef.current) {
+      if (cameraProblemRef.current) describe(fromTap);
+      return;
+    }
+    const video = videoRef.current;
+    if (!video) return;
+    const stopCtrl = new AbortController();
+    const takeNow = new AbortController();
+    guideRef.current = stopCtrl;
+    takeNowRef.current = takeNow;
+    lastInstruction.current = { text: "", at: 0 };
+    setErrorText("");
+    setTyping(false);
+    setAimView({ text: "Hold the phone up in front of you.", move: "none", ready: false });
+    setPhase("guiding");
+    void say("Hold the phone up in front of you, and I'll help you aim.");
+
+    void (async () => {
+      try {
+        const result = await guideToPhoto(video, stopCtrl.signal, takeNow.signal, (aim, readyCount) => {
+          const text = instructionFor(aim, readyCount);
+          setAimView({ text, move: aim.move, ready: aim.status === "ready" });
+          const last = lastInstruction.current;
+          const now = Date.now();
+          if (text !== last.text || now - last.at > REPEAT_INSTRUCTION_MS) {
+            lastInstruction.current = { text, at: now };
+            cue.nudge();
+            void say(text);
+          }
+        });
+        if (!result || stopCtrl.signal.aborted) return;
+        // Camera is off now; guiding is over even while the description loads.
+        if (guideRef.current === stopCtrl) guideRef.current = null;
+        if (takeNowRef.current === takeNow) takeNowRef.current = null;
+        setAimView(null);
+        cue.capture();
+        const lead =
+          result.how === "timeout"
+            ? "I couldn't find a clear view, so I took the photo anyway."
+            : result.how === "unavailable"
+              ? "Aiming help isn't working right now, so I took the photo."
+              : undefined;
+        await sendImage(result.frame, lead);
+      } catch (err) {
+        if (stopCtrl.signal.aborted) return;
+        const reason = err instanceof CameraError ? err.reason : "The camera couldn't start.";
+        cameraProblemRef.current = reason;
+        setCameraProblem(reason);
+        cue.error();
+        const msg = `${reason} Tap Describe to choose a photo instead.`;
+        setErrorText(msg);
+        setPhase("error");
+        void say(msg);
+      } finally {
+        if (guideRef.current === stopCtrl) guideRef.current = null;
+        if (takeNowRef.current === takeNow) takeNowRef.current = null;
+        setAimView(null);
+      }
+    })();
+  }
+
+  /** While guiding: stop aiming and take the photo now. */
+  function takeNow() {
+    unlock();
+    quiet();
+    takeNowRef.current?.abort();
   }
 
   /**
@@ -287,6 +384,8 @@ export default function App() {
     unlock();
     captureRef.current?.abort();
     captureRef.current = null;
+    guideRef.current?.abort();
+    guideRef.current = null;
     requestRef.current?.abort();
     requestRef.current = null;
     listenRef.current?.abort();
@@ -324,6 +423,7 @@ export default function App() {
       else if (cmd.kind === "repeat") repeat();
       else if (cmd.kind === "more" && baseRef.current) more();
       else if (cmd.kind === "describe") describe(false);
+      else if (cmd.kind === "guide") guide(false);
       else void askQuestion(cmd.kind === "question" ? cmd.text : heard, false);
     } catch (err) {
       if (listenRef.current !== ctrl) return;
@@ -370,8 +470,8 @@ export default function App() {
   // anywhere. Letter keys work only while focus is in the stage or the action
   // buttons (WCAG 2.1.4: character-key shortcuts active only on focus), so they
   // can't fire from a stray key press or from speech input elsewhere on the page.
-  const actions = useRef({ describe, more, listen, repeat, stop, cancel });
-  actions.current = { describe, more, listen, repeat, stop, cancel };
+  const actions = useRef({ describe, guide, takeNow, more, listen, repeat, stop, cancel });
+  actions.current = { describe, guide, takeNow, more, listen, repeat, stop, cancel };
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
   useEffect(() => {
@@ -383,10 +483,13 @@ export default function App() {
         return;
       }
       const a = actions.current;
-      const busy = phaseRef.current === "capturing" || phaseRef.current === "looking" || phaseRef.current === "listening";
+      const busy = phaseRef.current !== "idle" && phaseRef.current !== "result" && phaseRef.current !== "error";
       const k = e.key.toLowerCase();
       if (k === "escape") busy ? a.cancel() : a.stop();
-      else if (busy || !target?.closest("[data-shortcuts]")) return;
+      else if (!target?.closest("[data-shortcuts]")) return;
+      else if (phaseRef.current === "guiding" && k === "t") a.takeNow();
+      else if (busy) return;
+      else if (k === "g") a.guide();
       else if (k === "d") a.describe();
       else if (k === "a") void a.listen();
       else if (k === "r") a.repeat();
@@ -399,7 +502,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const busy = phase === "capturing" || phase === "looking" || phase === "listening";
+  const busy = phase === "capturing" || phase === "guiding" || phase === "looking" || phase === "listening";
   const r = shown?.result;
 
   return (
@@ -423,12 +526,12 @@ export default function App() {
         <video
           ref={videoRef}
           className="preview preview-live"
-          data-live={phase === "capturing"}
+          data-live={phase === "capturing" || phase === "guiding"}
           muted
           playsInline
           aria-hidden="true"
         />
-        {photoUrl && phase !== "capturing" && (
+        {photoUrl && phase !== "capturing" && phase !== "guiding" && (
           // eslint-disable-next-line @next/next/no-img-element
           <img className="preview" src={photoUrl} alt="" aria-hidden="true" />
         )}
@@ -446,6 +549,14 @@ export default function App() {
         {phase === "capturing" && (
           <div className="hint" aria-hidden="true">
             <p>Hold still…</p>
+          </div>
+        )}
+
+        {phase === "guiding" && aimView && (
+          // Spoken already; this is for low-vision users and companions.
+          <div className="aim" data-ready={aimView.ready} aria-hidden="true">
+            <AimArrow move={aimView.ready ? "none" : aimView.move} ready={aimView.ready} />
+            <p className="aim-text">{aimView.text}</p>
           </div>
         )}
 
@@ -541,10 +652,20 @@ export default function App() {
         )}
 
         {(phase === "idle" || phase === "error") && (
-          <div className="secondary-row two">
+          <div className="secondary-row">
             <button type="button" className="btn btn-secondary" onClick={() => void listen()} aria-keyshortcuts="A">
               <MicIcon />
               Ask
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => guide()}
+              aria-keyshortcuts="G"
+              aria-describedby="guide-help"
+            >
+              <TargetIcon />
+              Guide me
             </button>
             <button
               type="button"
@@ -560,7 +681,20 @@ export default function App() {
           </div>
         )}
 
-        {busy ? (
+        {phase === "guiding" && (
+          <div className="secondary-row one">
+            <button type="button" className="btn btn-secondary" onClick={cancel} aria-keyshortcuts="Escape">
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {phase === "guiding" ? (
+          <button type="button" className="btn btn-primary" onClick={takeNow} aria-keyshortcuts="T">
+            <CameraIcon />
+            Take it now
+          </button>
+        ) : busy ? (
           <button type="button" className="btn btn-primary btn-cancel" onClick={cancel} aria-keyshortcuts="Escape">
             Cancel
           </button>
@@ -581,6 +715,9 @@ export default function App() {
         )}
         <p id="describe-help" className="sr-only">
           Takes a photo of what your camera is pointing at and reads a description aloud.
+        </p>
+        <p id="guide-help" className="sr-only">
+          Hold the phone up. I'll tell you which way to turn until the exhibit is in view, then describe it.
         </p>
       </nav>
 
@@ -616,6 +753,51 @@ function CameraIcon() {
     </Svg>
   );
 }
+function TargetIcon() {
+  return (
+    <Svg>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" />
+    </Svg>
+  );
+}
+
+/** Big direction arrow for the guiding screen (decorative; instructions are spoken). */
+function AimArrow({ move, ready }: { move: AimMove; ready: boolean }) {
+  if (ready) {
+    return (
+      <svg className="aim-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M5 12.5l4.5 4.5L19 7.5" />
+      </svg>
+    );
+  }
+  const rotate: Partial<Record<AimMove, number>> = { up: 0, right: 90, down: 180, left: 270 };
+  if (move in rotate) {
+    return (
+      <svg
+        className="aim-icon"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        focusable="false"
+        style={{ transform: `rotate(${rotate[move]}deg)` }}
+      >
+        <path d="M12 20V5M5.5 11.5L12 5l6.5 6.5" />
+      </svg>
+    );
+  }
+  if (move === "back" || move === "closer") {
+    // Arrows pointing outward (step back) or inward (move closer).
+    const d = move === "back" ? "M9 12H3M6 9l-3 3 3 3M15 12h6M18 9l3 3-3 3" : "M3 12h6M6 9l3 3-3 3M21 12h-6M18 9l-3 3 3 3";
+    return (
+      <svg className="aim-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d={d} />
+      </svg>
+    );
+  }
+  return <div className="pulse" />;
+}
+
 function MicIcon() {
   return (
     <Svg>

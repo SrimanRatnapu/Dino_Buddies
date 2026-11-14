@@ -48,7 +48,7 @@ Only the owner edits these. If you need a change in the other side's area, ask t
 - **Shared, change only by agreement:** the contract below, `/shared/contract.ts` (types mirroring it), this file
 
 ## The contract (interface between A and B)
-Version: **v1**. Any change bumps the version and gets logged under `CONTRACT CHANGES`. Neither side changes shapes silently.
+Version: **v1.1** (v1 plus `POST /api/aim`). Any change bumps the version and gets logged under `CONTRACT CHANGES`. Neither side changes shapes silently.
 
 ### `POST /api/describe`
 Request (JSON):
@@ -81,6 +81,10 @@ Rules:
 - `confidence` below `high` means the UI must speak `caveats` first (for example "I'm not certain, but this looks like...").
 - The server never returns safety advice such as whether it is safe to approach an animal.
 - The API key lives only on the server.
+
+### `POST /api/aim` (v1.1, live aiming guidance)
+Request: `{ "image": "base64 JPEG, long edge about 512px, no data: prefix" }`, sent about once a second while the user holds the phone up.
+Response (200): `{ "status": "ready | adjust | searching", "move": "left | right | up | down | back | closer | none", "subject": "string" }`. `move` is `none` unless `status` is `adjust`. Image left is the user's left. Errors use the same JSON as `/api/describe`. Any error means "stop guiding and just take the photo".
 
 ### `POST /api/speak` (optional, B builds if time allows)
 Request: `{ "text": "string" }`. Response: `audio/mpeg` bytes from Google Cloud Text-to-Speech.
@@ -157,6 +161,11 @@ Times are relative to kickoff. Replace with real clock times once demos are sche
   - `shared/contract.ts` now matches the entry above: `image` is optional on a follow-up, and the error codes are listed as `ApiErrorCode`. `lib/http/errors.ts` uses that type.
   - New: `429 rate_limited` replies carry a `Retry-After` header (per-IP limits in `lib/http/rateLimit.ts`). `/api/describe` returns `413 image_too_large` for bodies over 8 MB before reading them. `/api/speak` returns `400` for text over 2000 characters.
   - Safety filter: sentences about touching casts and replicas at handling tables are kept. If filtering empties a description, the server answers "I can see: <subject>." instead of failing.
+
+- **2026-11-14, A (Sriman asked for live aiming guidance): v1.1, additive only.**
+  - New `POST /api/aim` (shape above). Uses `AIM_MODEL` (default `gemini-3.1-flash-lite`, falls back to `GEMINI_MODEL` on 404), a 6 s timeout, its own rate limit (`RATE_LIMIT_AIM_PER_MIN`, default 120), and mock replies from `/fixtures/aim.json`. Prompt in `/prompts/aim.ts`.
+  - Gemini client, thinking settings and error mapping moved to `lib/gemini/client.ts`, shared by describe and aim. Image validation is `parseImage()` in `lib/gemini/validate.ts`.
+  - `/api/describe` and `/api/speak` are unchanged.
 
 ## Backup ideas (only if this stalls)
 - Wildlife Rehab Triage: identify an injured animal, give "intervene or leave it" guidance, and look up the nearest rehabber with Maps.

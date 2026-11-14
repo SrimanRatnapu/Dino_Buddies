@@ -42,12 +42,11 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
- * Turns the camera on, lets exposure settle, takes one frame, and turns the
- * camera off again. The camera is never left running. Shows the live view in
- * `video` while it is on. Returns base64 JPEG (no data: prefix), or null if
- * aborted. Throws CameraError with a speakable reason on failure.
+ * Turns the camera on and shows the live view in `video`. Resolves once frames
+ * are arriving, with a function that turns the camera off again, or null if
+ * aborted (the camera is already off then). Throws CameraError on failure.
  */
-export async function captureOnce(video: HTMLVideoElement, signal?: AbortSignal): Promise<string | null> {
+export async function openCamera(video: HTMLVideoElement, signal?: AbortSignal): Promise<(() => void) | null> {
   const unsupported = cameraSupportError();
   if (unsupported) throw unsupported;
 
@@ -60,42 +59,79 @@ export async function captureOnce(video: HTMLVideoElement, signal?: AbortSignal)
   } catch (err) {
     throw new CameraError(reasonFor(err));
   }
+  const stop = () => {
+    stream.getTracks().forEach((t) => t.stop());
+    if (video.srcObject === stream) video.srcObject = null;
+  };
 
   try {
-    if (signal?.aborted) return null;
+    if (signal?.aborted) {
+      stop();
+      return null;
+    }
     video.srcObject = stream;
     await video.play().catch(() => {});
     const started = Date.now();
     while (!video.videoWidth && Date.now() - started < START_TIMEOUT_MS && !signal?.aborted) await wait(50, signal);
-    if (signal?.aborted) return null;
+    if (signal?.aborted) {
+      stop();
+      return null;
+    }
     if (!video.videoWidth) throw new CameraError("The camera didn't send a picture.");
+    return stop;
+  } catch (err) {
+    stop();
+    throw err;
+  }
+}
+
+/**
+ * Turns the camera on, lets exposure settle, takes one frame, and turns the
+ * camera off again. The camera is never left running. Returns base64 JPEG
+ * (no data: prefix), or null if aborted. Throws CameraError on failure.
+ */
+export async function captureOnce(video: HTMLVideoElement, signal?: AbortSignal): Promise<string | null> {
+  const stop = await openCamera(video, signal);
+  if (!stop) return null;
+  try {
     await wait(WARMUP_MS, signal);
     if (signal?.aborted) return null;
     const frame = captureFrame(video);
     if (!frame) throw new CameraError("The camera didn't send a picture.");
     return frame;
   } finally {
-    stream.getTracks().forEach((t) => t.stop());
-    video.srcObject = null;
+    stop();
   }
 }
 
-function toJpegBase64(source: CanvasImageSource, width: number, height: number): string {
-  const scale = Math.min(1, MAX_EDGE / Math.max(width, height));
+export { wait as sleep };
+
+function toJpegBase64(
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+  maxEdge = MAX_EDGE,
+  quality = JPEG_QUALITY,
+): string {
+  const scale = Math.min(1, maxEdge / Math.max(width, height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(width * scale);
   canvas.height = Math.round(height * scale);
   const g = canvas.getContext("2d");
   if (!g) throw new Error("no canvas");
   g.drawImage(source, 0, 0, canvas.width, canvas.height);
-  const url = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+  const url = canvas.toDataURL("image/jpeg", quality);
   return url.slice(url.indexOf(",") + 1);
 }
 
 /** Current video frame as base64 JPEG (no data: prefix), or null if not ready. */
-export function captureFrame(video: HTMLVideoElement | null): string | null {
+export function captureFrame(
+  video: HTMLVideoElement | null,
+  maxEdge = MAX_EDGE,
+  quality = JPEG_QUALITY,
+): string | null {
   if (!video || !video.videoWidth || !video.videoHeight) return null;
-  return toJpegBase64(video, video.videoWidth, video.videoHeight);
+  return toJpegBase64(video, video.videoWidth, video.videoHeight, maxEdge, quality);
 }
 
 /** A picked or captured photo file as base64 JPEG, resized to MAX_EDGE. */

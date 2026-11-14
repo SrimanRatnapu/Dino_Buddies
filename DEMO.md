@@ -20,7 +20,8 @@ npm run dev
 3. **Dinosaur:** point the phone at the T. rex skeleton image and tap **Describe**. Let the shutter tone, "Looking now", the chime and the description play out.
 4. **Follow-up by voice:** tap **Ask** and say "How big is it?" The answer is spoken.
 5. **Live animal:** **Describe new** on the zoo animal image. If confidence is lower, point out that the app says it isn't certain first: honesty for users who can't double-check.
-6. **Eyes closed:** turn the phone screen away from you (or close your eyes). Find the bottom button by thumb, describe, hear the sounds, ask a follow-up. "Everything you just heard works with VoiceOver and TalkBack too."
+6. **Eyes closed, with Guide me:** close your eyes, hold the phone up roughly toward the exhibit, and tap **Guide me** (middle button, above the big one). Let it say "Turn a little to the left… Step back a little… Got it", then describe. This shows a blind visitor framing a shot they can't see. "Everything you just heard works with VoiceOver and TalkBack too."
+   - Rehearse this on the real exhibit image. Start slightly off to one side so the audience hears at least one instruction. Each aiming step takes about a second, so move slowly.
 7. **Close:** Google pieces (Gemini vision, Cloud Text-to-Speech, Google Fonts' Atkinson Hyperlegible, Firebase or Cloud Run), and the museum, zoo and park pilot pitch.
 
 ## User story (social impact)

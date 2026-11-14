@@ -32,17 +32,18 @@ Targets: secondary buttons at least 76px tall. The main button takes at least 30
 ## Screens (one page, five states)
 | State | Stage shows | Controls | Sound and voice |
 |---|---|---|---|
-| **Capture** (`idle`) | The last photo (or nothing) and one hint line. The camera is off. | Ask, Use a photo, **Describe** | none |
+| **Capture** (`idle`) | The last photo (or nothing) and one hint line. The camera is off. | Ask, Guide me, Use a photo, **Describe** | none |
 | **Taking photo** (`capturing`) | Live camera for about a second, "Hold still…" | **Cancel** | "Hold still", then the shutter tone when the frame is taken. The camera turns off straight after. |
 | **Looking** | Pulsing ring, "Looking…" | **Cancel** | shutter tone, "Looking now", then "Still looking" after 8s |
 | **Listening** (follow-up) | Pulsing mic, "Listening…" | **Cancel** | rising two-note tone, mic opens 300ms later |
 | **Result** | Subject title, caveat, description, size, fun fact | Repeat or Stop, Tell me more, Ask, **Describe new** | done chime, result read aloud |
-| **Error** | The error message, large | Ask, Use a photo, **Try again** | low falling tone, message read aloud |
+| **Guiding** (`guiding`, from **Guide me**) | Live camera, a large arrow and the current instruction | Cancel, **Take it now** | "Hold the phone up in front of you…", then a soft tick and a short instruction ("Turn a little to the left", "Step back a little") only when it changes or every 4 s. Two "ready" answers in a row: "Got it", shutter tone, camera off, then the normal description. After 25 s, or if guidance fails twice, it takes the photo anyway and says so. |
+| **Error** | The error message, large | Ask, Guide me, Use a photo, **Try again** | low falling tone, message read aloud |
 
 ## Voice and keyboard
 - **Ask** opens the mic once. Saying "more", "repeat", "stop" or "describe" runs that command. Anything else is sent as a follow-up question about the current photo. Asking before any photo takes one first.
 - Where speech recognition is missing, a typed-question box appears instead.
-- Keys (Bluetooth keyboards and switch devices): **D** describe, **A** ask, **R** repeat, **M** more, **S** stop, **Esc** cancel or stop. Exposed with `aria-keyshortcuts`. Letter keys work only while focus is on the result or the action buttons (WCAG 2.1.4, character key shortcuts), so a stray key or speech input elsewhere can't trigger them. Esc works anywhere. After each result, focus lands on the result title, so the keys work straight away.
+- Keys (Bluetooth keyboards and switch devices): **D** describe, **G** guide me, **T** take it now (while guiding), **A** ask, **R** repeat, **M** more, **S** stop, **Esc** cancel or stop. Exposed with `aria-keyshortcuts`. Letter keys work only while focus is on the result or the action buttons (WCAG 2.1.4, character key shortcuts), so a stray key or speech input elsewhere can't trigger them. Esc works anywhere. After each result, focus lands on the result title, so the keys work straight away.
 - Saying "describe" when the camera is off can't open the photo picker (browsers require a tap), so the app says so and points to the Describe button.
 
 ## Screen readers

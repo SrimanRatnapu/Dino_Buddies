@@ -222,6 +222,56 @@ body {
   }
 }
 
+/* ---------- Guiding (live aiming help) ---------- */
+
+.aim {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.85);
+  border: 3px solid var(--accent);
+}
+
+.aim[data-ready="true"] {
+  border-color: var(--info);
+}
+
+.aim-icon {
+  width: 72px;
+  height: 72px;
+  flex: none;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 150ms ease;
+}
+
+.aim[data-ready="true"] .aim-icon {
+  stroke: var(--info);
+}
+
+.aim .pulse {
+  width: 64px;
+  height: 64px;
+  border-width: 6px;
+  flex: none;
+}
+
+.aim-text {
+  margin: 0;
+  font-size: 1.625rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
 /* ---------- Result ---------- */
 
 .result {
@@ -377,6 +427,10 @@ body {
   grid-template-columns: repeat(2, 1fr);
 }
 
+.secondary-row.one {
+  grid-template-columns: 1fr;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -474,6 +528,9 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .pulse {
     animation: none;
+  }
+  .aim-icon {
+    transition: none;
   }
   .btn {
     transition: none;

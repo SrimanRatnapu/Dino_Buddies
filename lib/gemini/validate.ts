@@ -25,6 +25,21 @@ function sniffMime(b64: string): string | null {
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
 /**
+ * Validates a base64 image field. Returns undefined if empty. Strips a stray
+ * data: prefix and detects the real type, so PNG/WebP/HEIC also work.
+ */
+export function parseImage(value: unknown, maxChars = MAX_BASE64_CHARS): ParsedRequest["image"] {
+  let b64 = str(value);
+  if (!b64) return undefined;
+  b64 = b64.replace(/^data:[^;]+;base64,/, "").replace(/\s/g, "");
+  if (b64.length > maxChars) throw new ApiFailure("image_too_large");
+  if (!/^[A-Za-z0-9+/_-]+=*$/.test(b64)) throw new ApiFailure("bad_request", undefined, "image not base64");
+  const mimeType = sniffMime(b64);
+  if (!mimeType) throw new ApiFailure("bad_request", undefined, "image not a JPEG/PNG/WebP/HEIC");
+  return { data: b64, mimeType };
+}
+
+/**
  * Validates a /api/describe body. Lenient where it costs nothing (strips a
  * stray data: prefix, accepts PNG/WebP), strict where bad input would waste a
  * Gemini call.
@@ -44,16 +59,7 @@ export function parseDescribeRequest(raw: unknown): ParsedRequest {
     if (subject || description) previous = { subject, description };
   }
 
-  let image: ParsedRequest["image"];
-  let b64 = str(body.image);
-  if (b64) {
-    b64 = b64.replace(/^data:[^;]+;base64,/, "").replace(/\s/g, "");
-    if (b64.length > MAX_BASE64_CHARS) throw new ApiFailure("image_too_large");
-    if (!/^[A-Za-z0-9+/_-]+=*$/.test(b64)) throw new ApiFailure("bad_request", undefined, "image not base64");
-    const mimeType = sniffMime(b64);
-    if (!mimeType) throw new ApiFailure("bad_request", undefined, "image not a JPEG/PNG/WebP/HEIC");
-    image = { data: b64, mimeType };
-  }
+  const image = parseImage(body.image);
 
   // A first description needs an image. A follow-up can be text-only if the
   // previous description is supplied.

@@ -103,6 +103,7 @@ export type VoiceCommand =
   | { kind: "more" }
   | { kind: "repeat" }
   | { kind: "stop" }
+  | { kind: "guide" }
   | { kind: "question"; text: string };
 
 /** Maps what was heard to a command. Anything unrecognized is a follow-up question. */
@@ -111,6 +112,7 @@ export function parseCommand(heard: string): VoiceCommand {
   if (/^(stop|quiet|be quiet|cancel|stop talking)$/.test(t)) return { kind: "stop" };
   if (/^(repeat|again|repeat that|say (that|it) again|what did you say)$/.test(t)) return { kind: "repeat" };
   if (/^(more|tell me more|more details?|go on|keep going)$/.test(t)) return { kind: "more" };
+  if (/^(guide me|guide|help me aim|aim|help me point|where should i point)$/.test(t)) return { kind: "guide" };
   if (
     /^(describe|describe this|describe it|look|what is this|whats this|what's this|what is that|what am i looking at|new photo|take a (photo|picture))$/.test(
       t,

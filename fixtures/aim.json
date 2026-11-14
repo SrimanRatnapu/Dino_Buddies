@@ -1,0 +1,10 @@
+{
+  "_note": "Mock replies for POST /api/aim when MOCK=1. The server steps through these in order, one per request, then starts again.",
+  "sequence": [
+    { "status": "searching", "move": "none", "subject": "" },
+    { "status": "adjust", "move": "left", "subject": "dinosaur skeleton" },
+    { "status": "adjust", "move": "back", "subject": "dinosaur skeleton" },
+    { "status": "ready", "move": "none", "subject": "dinosaur skeleton" },
+    { "status": "ready", "move": "none", "subject": "dinosaur skeleton" }
+  ]
+}

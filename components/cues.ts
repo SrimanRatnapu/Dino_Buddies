@@ -62,6 +62,11 @@ export const cue = {
     tones([[392, 0.14], [262, 0.24]], "triangle");
     vibrate([90, 60, 90]);
   },
+  /** New aiming instruction (soft, so it doesn't compete with speech). */
+  nudge() {
+    tones([[880, 0.04]], "sine", 0.08);
+    vibrate(15);
+  },
   /** Cancelled or stopped. */
   cancel() {
     tones([[660, 0.07]]);

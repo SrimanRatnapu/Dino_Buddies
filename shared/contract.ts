@@ -2,7 +2,7 @@
 // Shared file: change only by agreement between A and B, and log the change
 // under CONTRACT CHANGES in CLAUDE.md.
 
-export const CONTRACT_VERSION = "v1";
+export const CONTRACT_VERSION = "v1.1";
 
 export type DescribeMode = "default" | "detailed";
 export type Confidence = "high" | "medium" | "low";
@@ -51,6 +51,28 @@ export type ApiErrorCode =
  */
 export interface ApiError {
   error: { code: ApiErrorCode | (string & {}); message: string };
+}
+
+/**
+ * POST /api/aim (v1.1): aiming guidance for one low-resolution live frame.
+ * Called about once a second while the user holds the phone up.
+ */
+export interface AimRequest {
+  /** Base64 JPEG, long edge about 512px, no `data:` prefix. */
+  image: string;
+}
+
+/** Which way to move the phone. Image left is the user's left (rear camera). */
+export type AimMove = "left" | "right" | "up" | "down" | "back" | "closer" | "none";
+
+/** POST /api/aim 200 response. Errors use ApiError like /api/describe. */
+export interface AimResponse {
+  /** ready: good view, take the photo. adjust: follow `move`. searching: no clear subject in view. */
+  status: "ready" | "adjust" | "searching";
+  /** "none" unless status is "adjust". */
+  move: AimMove;
+  /** A few words naming what's in view, or "" when searching. */
+  subject: string;
 }
 
 /** POST /api/speak request body. Response is audio/mpeg bytes. */
