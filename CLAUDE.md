@@ -167,6 +167,12 @@ Times are relative to kickoff. Replace with real clock times once demos are sche
   - Gemini client, thinking settings and error mapping moved to `lib/gemini/client.ts`, shared by describe and aim. Image validation is `parseImage()` in `lib/gemini/validate.ts`.
   - `/api/describe` and `/api/speak` are unchanged.
 
+- **2026-11-14, B (Sriman asked for a UI redesign with tasteskill): no API or contract change, still v1.1.** A, this touched your files:
+  - `app/layout.tsx`, `app/page.tsx`, `components/App.tsx` (markup only: every state, handler, shortcut and spoken message is kept, including Guide me), `styles/globals.css`, new `components/Landing.tsx`, kit files in `public/assets/`.
+  - The page is now a one-page site built by the tasteskill skill (`skills-lock.json`; plan and waivers in `.taste-skill/`): hero, the live app in an app window (`#app`), steps, voice, statement, accuracy, FAQ, close. Every "Get a description" button (`data-describe`) takes the photo on its own tap and jumps to `#app`.
+  - Type is now IBM Plex Sans (dealt by the skill) instead of Atkinson Hyperlegible, so `DESIGN.md` is out of date on fonts and colours.
+  - Photos in `public/assets/img/` are Wikimedia Commons stand-ins (CC BY-SA 3.0, CC0, public domain), credited in the footer.
+
 ## Backup ideas (only if this stalls)
 - Wildlife Rehab Triage: identify an injured animal, give "intervene or leave it" guidance, and look up the nearest rehabber with Maps.
 - FossilID: Gemini vision identification of possible fossil finds with a "report it, don't dig it" flow.

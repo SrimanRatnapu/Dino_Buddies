@@ -194,7 +194,7 @@ export default function App() {
         fileRef.current?.click();
       } else {
         cue.error();
-        void say(`${cameraProblemRef.current} Tap Describe at the bottom of the screen to choose a photo.`);
+        void say(`${cameraProblemRef.current} Tap Take a photo to choose a photo instead.`);
       }
       return;
     }
@@ -260,7 +260,7 @@ export default function App() {
         cameraProblemRef.current = reason;
         setCameraProblem(reason);
         cue.error();
-        const msg = `${reason} Tap Describe to choose a photo instead.`;
+        const msg = `${reason} Tap Take a photo to choose a photo instead.`;
         setErrorText(msg);
         setPhase("error");
         void say(msg);
@@ -303,7 +303,7 @@ export default function App() {
       cameraProblemRef.current = reason;
       setCameraProblem(reason);
       cue.error();
-      const msg = `${reason} Tap Describe to choose a photo instead.`;
+      const msg = `${reason} Tap Take a photo to choose a photo instead.`;
       setErrorText(msg);
       setPhase("error");
       void say(msg);
@@ -502,239 +502,280 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Every "Get a description" button on the page (nav, hero, close) takes the photo on its own tap,
+  // so the browser still counts it as a user gesture (iOS audio, the photo picker). The link then
+  // jumps to this section as usual.
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest("[data-describe]");
+      if (!el) return;
+      if (phaseRef.current !== "idle" && phaseRef.current !== "result" && phaseRef.current !== "error") return;
+      actions.current.describe();
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, []);
+
   const busy = phase === "capturing" || phase === "guiding" || phase === "looking" || phase === "listening";
   const r = shown?.result;
 
   return (
-    <div className="app" data-phase={phase}>
-      <header className="topbar">
-        <h1 className="brand">{APP_NAME}</h1>
-        {mock && <span className="badge">Demo data</span>}
-        <button
-          type="button"
-          className="toggle"
-          aria-pressed={voiceOn}
-          onClick={toggleVoice}
-          title="Turn off if you prefer your own screen reader"
-        >
-          App voice {voiceOn ? "on" : "off"}
-        </button>
-      </header>
-
-      <main className="stage" data-shortcuts>
-        {/* Live only while a photo is being taken; the camera is off otherwise. */}
-        <video
-          ref={videoRef}
-          className="preview preview-live"
-          data-live={phase === "capturing" || phase === "guiding"}
-          muted
-          playsInline
-          aria-hidden="true"
-        />
-        {photoUrl && phase !== "capturing" && phase !== "guiding" && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img className="preview" src={photoUrl} alt="" aria-hidden="true" />
-        )}
-
-        {phase === "idle" && (
-          <div className="hint">
-            {cameraProblem ? (
-              <p>{cameraProblem} Describe will open your camera app or photos.</p>
-            ) : (
-              <p>Point your phone at an exhibit or animal, then tap Describe. The camera turns on only to take the photo.</p>
-            )}
-          </div>
-        )}
-
-        {phase === "capturing" && (
-          <div className="hint" aria-hidden="true">
-            <p>Hold still…</p>
-          </div>
-        )}
-
-        {phase === "guiding" && aimView && (
-          // Spoken already; this is for low-vision users and companions.
-          <div className="aim" data-ready={aimView.ready} aria-hidden="true">
-            <AimArrow move={aimView.ready ? "none" : aimView.move} ready={aimView.ready} />
-            <p className="aim-text">{aimView.text}</p>
-          </div>
-        )}
-
-        {phase === "looking" && (
-          <div className="overlay" aria-hidden="true">
-            <div className="pulse" />
-            <p className="overlay-text">Looking…</p>
-          </div>
-        )}
-
-        {phase === "listening" && (
-          <div className="overlay" aria-hidden="true">
-            <div className="pulse pulse-mic">
-              <MicIcon />
-            </div>
-            <p className="overlay-text">Listening…</p>
-            <p className="overlay-sub">Ask a question, or say “more” or “repeat”.</p>
-          </div>
-        )}
-
-        {phase === "result" && r && (
-          <section className="result" aria-labelledby="result-title">
-            {shown.question && <p className="asked">You asked: “{shown.question}”</p>}
-            <h2 id="result-title" ref={headingRef} tabIndex={-1}>
-              {r.subject}
-            </h2>
-            {r.confidence !== "high" && (
-              <p className="caveat">
-                <span className="label label-caution">Not certain</span>
-                {r.caveats || "This identification may be wrong."}
-              </p>
-            )}
-            <p className="desc">{r.description}</p>
-            {shown.kind === "describe" && r.size_comparison && (
-              <p className="fact">
-                <span className="label">Size</span>
-                {r.size_comparison}
-              </p>
-            )}
-            {shown.kind === "describe" && r.fun_fact && (
-              <p className="fact">
-                <span className="label">Fun fact</span>
-                {r.fun_fact}
-              </p>
-            )}
-          </section>
-        )}
-
-        {phase === "error" && (
-          <div className="error">
-            <p ref={errorRef} tabIndex={-1} role={voiceOn ? undefined : "alert"}>
-              {errorText}
+    <section className="section" id="app" aria-labelledby="app-h">
+      <div className="wrap">
+        <div className="grid">
+          <h2 id="app-h" className="span-5">
+            Describes a photo on this page
+          </h2>
+          <div className="span-6 start-7 stack-4 wd-intro">
+            <p>
+              Tap Get a description and allow the camera. It takes one photo, Gemini reads it, and the description
+              plays aloud. Then ask a question by voice.
             </p>
+            <a className="link" href="#voice">
+              See the voice commands
+            </a>
           </div>
-        )}
+        </div>
 
-        {typing && !busy && (
-          <form className="ask-form" onSubmit={onTypedQuestion}>
-            <label htmlFor="question">Type your question</label>
-            <div className="ask-row">
-              <input id="question" ref={questionRef} type="text" autoComplete="off" enterKeyHint="send" />
-              <button type="submit" className="btn btn-secondary">
-                Ask
+        <div className="ui app fill wd-app" data-phase={phase} data-visual>
+          <div className="app__pane wd-photo" data-shortcuts>
+            {/* Live only while a photo is being taken; the camera is off otherwise. */}
+            <video
+              ref={videoRef}
+              className="wd-preview wd-preview--live"
+              data-live={phase === "capturing" || phase === "guiding"}
+              muted
+              playsInline
+              aria-hidden="true"
+            />
+            {photoUrl && phase !== "capturing" && phase !== "guiding" && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="wd-preview" src={photoUrl} alt="" aria-hidden="true" />
+            )}
+            {!photoUrl && phase !== "capturing" && phase !== "guiding" && (
+              <div className="wd-empty" aria-hidden="true" data-fx="grain-gradient" data-fx-seed="53">
+                <span className="pc-finder__corners" />
+                <CameraIcon />
+              </div>
+            )}
+            {phase === "capturing" && (
+              <div className="wd-overlay" aria-hidden="true">
+                <p>Hold still</p>
+              </div>
+            )}
+            {phase === "guiding" && aimView && (
+              // Spoken already; this is for low-vision users and companions.
+              <div className="wd-aim" data-ready={aimView.ready} aria-hidden="true">
+                <AimArrow move={aimView.ready ? "none" : aimView.move} ready={aimView.ready} />
+                <p className="wd-aim__text">{aimView.text}</p>
+              </div>
+            )}
+            {phase === "looking" && (
+              <div className="wd-overlay" aria-hidden="true">
+                <span className="wd-pulse" />
+                <p>Looking</p>
+              </div>
+            )}
+            {phase === "listening" && (
+              <div className="wd-overlay" aria-hidden="true">
+                <span className="wd-pulse wd-pulse--mic">
+                  <MicIcon />
+                </span>
+                <p>Listening</p>
+              </div>
+            )}
+          </div>
+
+          <div className="app__pane wd-panel">
+            <div className="wd-head">
+              <span className="wd-title">
+                <span className="mark" data-mark="ring" aria-hidden="true"></span>Wildlife Described
+              </span>
+              {mock && <span className="pc-chip">Demo data</span>}
+              <button
+                type="button"
+                className="wd-toggle"
+                aria-pressed={voiceOn}
+                onClick={toggleVoice}
+                title="Turn off if you prefer your own screen reader"
+              >
+                App voice {voiceOn ? "on" : "off"}
               </button>
             </div>
-          </form>
-        )}
-      </main>
 
-      <nav className="controls" aria-label="Actions" data-shortcuts>
-        {phase === "result" && (
-          <div className="secondary-row">
-            {speaking ? (
-              <button type="button" className="btn btn-secondary" onClick={stop} aria-keyshortcuts="S">
-                <StopIcon />
-                Stop
-              </button>
-            ) : (
-              <button type="button" className="btn btn-secondary" onClick={repeat} aria-keyshortcuts="R">
-                <RepeatIcon />
-                Repeat
-              </button>
-            )}
-            <button type="button" className="btn btn-secondary" onClick={more} aria-keyshortcuts="M">
-              <PlusIcon />
-              Tell me more
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => void listen()} aria-keyshortcuts="A">
-              <MicIcon />
-              Ask
-            </button>
+            <div className="wd-body" data-shortcuts>
+              {phase === "idle" && (
+                <p className="wd-hint">
+                  {cameraProblem
+                    ? `${cameraProblem} Take a photo opens your camera app or photos.`
+                    : "Point your phone at an exhibit or animal, then take a photo. The camera turns on only for the photo."}
+                </p>
+              )}
+              {phase === "capturing" && <p className="wd-hint">Hold still. Taking the photo.</p>}
+              {phase === "guiding" && (
+                <p className="wd-hint">Guiding. I'll say which way to turn, then take the photo when the exhibit is in view.</p>
+              )}
+              {phase === "looking" && <p className="wd-hint">Looking at the photo.</p>}
+              {phase === "listening" && (
+                <p className="wd-hint">Listening. Ask a question, or say “more” or “repeat”.</p>
+              )}
+
+              {phase === "result" && r && (
+                <div className="wd-result" aria-labelledby="result-title">
+                  {shown.question && <p className="wd-asked">You asked: “{shown.question}”</p>}
+                  <h3 id="result-title" ref={headingRef} tabIndex={-1}>
+                    {r.subject}
+                  </h3>
+                  {r.confidence !== "high" && (
+                    <p className="wd-caveat">
+                      <span className="pc-chip pc-chip--warn">Not certain</span>
+                      {r.caveats || "This identification may be wrong."}
+                    </p>
+                  )}
+                  <p className="wd-desc">{r.description}</p>
+                  {shown.kind === "describe" && r.size_comparison && (
+                    <p className="wd-fact">
+                      <span className="wd-fact__label">Size</span>
+                      {r.size_comparison}
+                    </p>
+                  )}
+                  {shown.kind === "describe" && r.fun_fact && (
+                    <p className="wd-fact">
+                      <span className="wd-fact__label">Fun fact</span>
+                      {r.fun_fact}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {phase === "error" && (
+                <p className="wd-error" ref={errorRef} tabIndex={-1} role={voiceOn ? undefined : "alert"}>
+                  {errorText}
+                </p>
+              )}
+
+              {typing && !busy && (
+                <form className="wd-ask" onSubmit={onTypedQuestion}>
+                  <label htmlFor="question">Type your question</label>
+                  <div className="wd-ask__row">
+                    <input id="question" ref={questionRef} type="text" autoComplete="off" enterKeyHint="send" />
+                    <button type="submit" className="wd-btn">
+                      Ask
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
+            <div className="wd-controls" role="group" aria-label="App actions" data-shortcuts>
+              {phase === "result" && (
+                <div className="wd-row">
+                  {speaking ? (
+                    <button type="button" className="wd-btn" onClick={stop} aria-keyshortcuts="S">
+                      <StopIcon />
+                      Stop
+                    </button>
+                  ) : (
+                    <button type="button" className="wd-btn" onClick={repeat} aria-keyshortcuts="R">
+                      <RepeatIcon />
+                      Repeat
+                    </button>
+                  )}
+                  <button type="button" className="wd-btn" onClick={more} aria-keyshortcuts="M">
+                    <PlusIcon />
+                    Tell me more
+                  </button>
+                  <button type="button" className="wd-btn" onClick={() => void listen()} aria-keyshortcuts="A">
+                    <MicIcon />
+                    Ask
+                  </button>
+                </div>
+              )}
+
+              {(phase === "idle" || phase === "error") && (
+                <div className="wd-row">
+                  <button type="button" className="wd-btn" onClick={() => void listen()} aria-keyshortcuts="A">
+                    <MicIcon />
+                    Ask
+                  </button>
+                  <button
+                    type="button"
+                    className="wd-btn"
+                    onClick={() => guide()}
+                    aria-keyshortcuts="G"
+                    aria-describedby="guide-help"
+                  >
+                    <TargetIcon />
+                    Guide me
+                  </button>
+                  <button
+                    type="button"
+                    className="wd-btn"
+                    onClick={() => {
+                      unlock();
+                      fileRef.current?.click();
+                    }}
+                  >
+                    <PhotoIcon />
+                    Use a photo
+                  </button>
+                </div>
+              )}
+
+              {phase === "guiding" && (
+                <div className="wd-row wd-row--one">
+                  <button type="button" className="wd-btn" onClick={cancel} aria-keyshortcuts="Escape">
+                    Cancel
+                  </button>
+                </div>
+              )}
+
+              {phase === "guiding" ? (
+                <button type="button" className="wd-btn wd-btn--main" onClick={takeNow} aria-keyshortcuts="T">
+                  <CameraIcon />
+                  Take it now
+                </button>
+              ) : busy ? (
+                <button type="button" className="wd-btn wd-btn--main wd-btn--cancel" onClick={cancel} aria-keyshortcuts="Escape">
+                  Cancel
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="wd-btn wd-btn--main"
+                  onClick={() => describe()}
+                  aria-keyshortcuts="D"
+                  aria-describedby="describe-help"
+                >
+                  <CameraIcon />
+                  {phase === "result" ? "Take a new photo" : phase === "error" ? "Try again" : "Take a photo"}
+                </button>
+              )}
+              <p id="describe-help" className="sr-only">
+                Takes a photo of what your camera is pointing at and reads a description aloud.
+              </p>
+              <p id="guide-help" className="sr-only">
+                Hold the phone up. I'll tell you which way to turn until the exhibit is in view, then describe it.
+              </p>
+            </div>
           </div>
-        )}
+        </div>
 
-        {(phase === "idle" || phase === "error") && (
-          <div className="secondary-row">
-            <button type="button" className="btn btn-secondary" onClick={() => void listen()} aria-keyshortcuts="A">
-              <MicIcon />
-              Ask
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => guide()}
-              aria-keyshortcuts="G"
-              aria-describedby="guide-help"
-            >
-              <TargetIcon />
-              Guide me
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => {
-                unlock();
-                fileRef.current?.click();
-              }}
-            >
-              <PhotoIcon />
-              Use a photo
-            </button>
-          </div>
-        )}
-
-        {phase === "guiding" && (
-          <div className="secondary-row one">
-            <button type="button" className="btn btn-secondary" onClick={cancel} aria-keyshortcuts="Escape">
-              Cancel
-            </button>
-          </div>
-        )}
-
-        {phase === "guiding" ? (
-          <button type="button" className="btn btn-primary" onClick={takeNow} aria-keyshortcuts="T">
-            <CameraIcon />
-            Take it now
-          </button>
-        ) : busy ? (
-          <button type="button" className="btn btn-primary btn-cancel" onClick={cancel} aria-keyshortcuts="Escape">
-            Cancel
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => describe()}
-            aria-keyshortcuts="D"
-            aria-describedby="describe-help"
-          >
-            <CameraIcon />
-            {phase === "result" ? "Describe new" : phase === "error" ? "Try again" : "Describe"}
-            <span className="btn-hint" aria-hidden="true">
-              Tap anywhere in this area
-            </span>
-          </button>
-        )}
-        <p id="describe-help" className="sr-only">
-          Takes a photo of what your camera is pointing at and reads a description aloud.
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={onFile}
+        />
+        <p className="sr-only" role="status" aria-live="polite">
+          {status}
         </p>
-        <p id="guide-help" className="sr-only">
-          Hold the phone up. I'll tell you which way to turn until the exhibit is in view, then describe it.
-        </p>
-      </nav>
-
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="sr-only"
-        tabIndex={-1}
-        aria-hidden="true"
-        onChange={onFile}
-      />
-      <p className="sr-only" role="status" aria-live="polite">
-        {status}
-      </p>
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -795,7 +836,7 @@ function AimArrow({ move, ready }: { move: AimMove; ready: boolean }) {
       </svg>
     );
   }
-  return <div className="pulse" />;
+  return <span className="wd-pulse" />;
 }
 
 function MicIcon() {
