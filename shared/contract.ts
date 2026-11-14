@@ -9,8 +9,12 @@ export type Confidence = "high" | "medium" | "low";
 
 /** POST /api/describe request body. */
 export interface DescribeRequest {
-  /** Base64 JPEG, long edge max 1024px, no `data:` prefix. */
-  image: string;
+  /**
+   * Base64 JPEG, long edge max 1024px, no `data:` prefix. Required for a first
+   * look. May be omitted on a follow-up when `question` and `previous` are
+   * sent, though sending it is preferred.
+   */
+  image?: string;
   mode: DescribeMode;
   /** Optional follow-up question. */
   question?: string;
@@ -30,9 +34,23 @@ export interface DescribeSuccess {
   caveats: string;
 }
 
-/** 4xx/5xx response body. `message` is read aloud, so it is a plain sentence. */
+/** Error codes the server sends, with their HTTP status. */
+export type ApiErrorCode =
+  | "bad_request" // 400
+  | "image_too_large" // 413
+  | "unclear_image" // 422
+  | "rate_limited" // 429, with a Retry-After header
+  | "not_configured" // 503
+  | "model_error" // 502
+  | "timeout"; // 504
+
+/**
+ * 4xx/5xx response body. `message` is read aloud, so it is a plain sentence.
+ * `code` is one of ApiErrorCode from the server; the client also makes its own
+ * codes (network, cancelled) for failures that never reach the server.
+ */
 export interface ApiError {
-  error: { code: string; message: string };
+  error: { code: ApiErrorCode | (string & {}); message: string };
 }
 
 /** POST /api/speak request body. Response is audio/mpeg bytes. */

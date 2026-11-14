@@ -74,9 +74,14 @@ export interface ModelOutput extends DescribeSuccess {
 const SAFETY_SENTENCE =
   /\b(safe|unsafe|dangerous|harmless)\b[^.!?]*\b(approach|touch|pet|feed|handle|get close|go near)\b|\b(do not|don't|never)\s+(approach|touch|pet|feed|handle)\b/i;
 
+// Museum handling tables invite touching casts and replicas. Saying so is
+// exhibit information, not advice about approaching a live animal.
+const TOUCH_EXHIBIT =
+  /\b(cast|replica|model|reproduction|sculpture|statue|touch (table|exhibit|station)|handling (table|collection))\b/i;
+
 function stripSafetyAdvice(text: string): string {
   const sentences = text.match(/[^.!?]+[.!?]*\s*/g) ?? [text];
-  return sentences.filter((s) => !SAFETY_SENTENCE.test(s)).join("").trim();
+  return sentences.filter((s) => !SAFETY_SENTENCE.test(s) || TOUCH_EXHIBIT.test(s)).join("").trim();
 }
 
 /** Makes speech-friendly: no markdown, no stray whitespace. */
@@ -95,12 +100,17 @@ function clean(text: unknown, max = 1500): string {
  * image is unusable.
  */
 export function normalize(out: Partial<ModelOutput>): DescribeSuccess {
-  const description = clean(out.description);
+  const subject = clean(out.subject, 120) || "Something I couldn't name";
+  let description = clean(out.description);
 
   if (out.usable === false) {
     throw new ApiFailure("unclear_image", description || undefined, "model said unusable");
   }
-  if (!description) throw new ApiFailure("model_error", undefined, "empty description");
+  if (!description) {
+    if (!str(out.description)) throw new ApiFailure("model_error", undefined, "empty description");
+    // Everything was safety advice and got removed. Still answer, plainly.
+    description = `I can see: ${subject}.`;
+  }
 
   const confidence: Confidence =
     out.confidence === "high" || out.confidence === "medium" || out.confidence === "low"
@@ -112,7 +122,7 @@ export function normalize(out: Partial<ModelOutput>): DescribeSuccess {
   else if (!caveats) caveats = "I'm not completely sure about this.";
 
   return {
-    subject: clean(out.subject, 120) || "Something I couldn't name",
+    subject,
     confidence,
     description,
     size_comparison: clean(out.size_comparison, 200),

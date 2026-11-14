@@ -86,9 +86,9 @@ async function speakCloud(text: string, my: number): Promise<boolean> {
     if (!res.ok || !type.startsWith("audio/")) {
       // Not built (404/501) or not configured (503): skip for the session.
       // Upstream failure (502) or a non-audio reply: skip for a while.
-      // Rate limits and timeouts are transient: try again next time.
+      // Anything else (too long, rate limited, timeout) affects only this one.
       if ([404, 501, 503].includes(res.status)) cloudOffUntil = Infinity;
-      else if (res.status !== 429 && res.status !== 504) cloudOffUntil = Date.now() + CLOUD_RETRY_MS;
+      else if (res.status === 502 || res.ok) cloudOffUntil = Date.now() + CLOUD_RETRY_MS;
       return false;
     }
     const blob = await res.blob();

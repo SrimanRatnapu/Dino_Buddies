@@ -1,13 +1,7 @@
-import type { ApiError } from "@/shared/contract";
+import type { ApiError, ApiErrorCode } from "@/shared/contract";
 
-export type ErrorCode =
-  | "bad_request"
-  | "image_too_large"
-  | "unclear_image"
-  | "rate_limited"
-  | "timeout"
-  | "not_configured"
-  | "model_error";
+/** Error codes the server sends. The list lives in shared/contract.ts. */
+export type ErrorCode = ApiErrorCode;
 
 /** Every message here is read aloud to a blind user. Keep them plain and short. */
 export const SPOKEN: Record<ErrorCode, string> = {
@@ -40,10 +34,15 @@ export class ApiFailure extends Error {
   }
 }
 
-export function errorJson(code: ErrorCode, message: string = SPOKEN[code]) {
+export function errorJson(code: ErrorCode, message: string = SPOKEN[code], headers: Record<string, string> = {}) {
   const body: ApiError = { error: { code, message } };
   return Response.json(body, {
     status: STATUS[code],
-    headers: { "Cache-Control": "no-store" },
+    headers: { "Cache-Control": "no-store", ...headers },
   });
+}
+
+/** 429 reply with Retry-After, for lib/http/rateLimit.ts. */
+export function rateLimitedJson(retryAfterSeconds: number) {
+  return errorJson("rate_limited", SPOKEN.rate_limited, { "Retry-After": String(retryAfterSeconds) });
 }

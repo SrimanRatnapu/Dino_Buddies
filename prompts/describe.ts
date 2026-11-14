@@ -1,7 +1,7 @@
 /**
  * All prompts live here so they are easy to tune during the event.
  * Edit the wording freely; keep the JSON field names in sync with
- * lib/gemini/schema.ts and shared/contract.ts.
+ * RESPONSE_SCHEMA in lib/gemini/describe.ts and shared/contract.ts.
  */
 
 export const SYSTEM_PROMPT = `You are the eyes of a blind or low-vision visitor at a museum, zoo, aquarium, park or trail. They point a phone camera at something and you describe it out loud. Everything you write will be spoken by a text-to-speech voice, and the listener cannot see the screen.

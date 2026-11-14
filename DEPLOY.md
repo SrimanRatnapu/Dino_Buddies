@@ -21,10 +21,12 @@ gcloud secrets add-iam-policy-binding gemini-api-key --member="serviceAccount:$(
 Deploy from the repo root. This uses the `Dockerfile`:
 
 ```bash
-gcloud run deploy wildlife-described --source . --region us-central1 --allow-unauthenticated --min-instances 1 --set-secrets GEMINI_API_KEY=gemini-api-key:latest --set-env-vars MOCK=0,GEMINI_MODEL=gemini-2.5-flash
+gcloud run deploy wildlife-described --source . --region us-central1 --allow-unauthenticated --min-instances 1 --max-instances 3 --set-secrets GEMINI_API_KEY=gemini-api-key:latest --set-env-vars MOCK=0,GEMINI_MODEL=gemini-2.5-flash
 ```
 
 `--min-instances 1` avoids a cold start in the middle of the demo. It costs a little while it runs, so set it back to 0 after the event.
+
+**Abuse limits:** the URL is public, so anyone who sees it could use the keys. Each instance allows 30 describe and 60 speak requests per minute per IP address (`RATE_LIMIT_DESCRIBE_PER_MIN`, `RATE_LIMIT_SPEAK_PER_MIN`; set to 0 to turn off). `--max-instances 3` caps how many instances can run, and so total spend. Everyone on the venue Wi-Fi may share one IP address, so run the demo phone on mobile data, or raise the limits for the event. For a hard cap, also set a quota on the Gemini API in the Cloud console.
 
 Check it with `curl https://<service-url>/api/health`, then `npm run smoke -- --base=https://<service-url> path/to/trex.jpg`.
 

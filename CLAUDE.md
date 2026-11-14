@@ -153,6 +153,11 @@ Times are relative to kickoff. Replace with real clock times once demos are sche
   - Added `GET /api/health` (status, no secrets).
   - `next.config.ts` gains `output: "standalone"` for the Cloud Run image. `package.json` gains `@google/genai` and the `dev:mock`, `models` and `smoke` scripts.
 
+- **2026-11-14, A (Sriman asked A to fix B's review findings): still v1, no shape change.**
+  - `shared/contract.ts` now matches the entry above: `image` is optional on a follow-up, and the error codes are listed as `ApiErrorCode`. `lib/http/errors.ts` uses that type.
+  - New: `429 rate_limited` replies carry a `Retry-After` header (per-IP limits in `lib/http/rateLimit.ts`). `/api/describe` returns `413 image_too_large` for bodies over 8 MB before reading them. `/api/speak` returns `400` for text over 2000 characters.
+  - Safety filter: sentences about touching casts and replicas at handling tables are kept. If filtering empties a description, the server answers "I can see: <subject>." instead of failing.
+
 ## Backup ideas (only if this stalls)
 - Wildlife Rehab Triage: identify an injured animal, give "intervene or leave it" guidance, and look up the nearest rehabber with Maps.
 - FossilID: Gemini vision identification of possible fossil finds with a "report it, don't dig it" flow.

@@ -1,12 +1,16 @@
 import { describe } from "@/lib/gemini/describe";
 import { isMock } from "@/lib/gemini/config";
 import { parseDescribeRequest } from "@/lib/gemini/validate";
-import { ApiFailure, errorJson } from "@/lib/http/errors";
+import { ApiFailure, errorJson, rateLimitedJson } from "@/lib/http/errors";
+import { rateLimit } from "@/lib/http/rateLimit";
 import fixtures from "@/fixtures/describe.json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
+
+/** Reject before reading the body. A 1024px JPEG in base64 is well under 1 MB. */
+const MAX_BODY_BYTES = 8_000_000;
 
 type FixtureName = "trex" | "giraffe" | "lowconf" | "error" | "followup";
 const FIXTURES = fixtures as unknown as Record<FixtureName, { status: number; body: unknown }>;
@@ -25,6 +29,10 @@ async function mockResponse(url: URL, isFollowUp: boolean) {
 }
 
 export async function POST(request: Request) {
+  const wait = rateLimit("describe", request);
+  if (wait) return rateLimitedJson(wait);
+  if (Number(request.headers.get("content-length") || 0) > MAX_BODY_BYTES) return errorJson("image_too_large");
+
   let raw: unknown;
   try {
     raw = await request.json();
