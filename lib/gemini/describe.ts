@@ -2,7 +2,7 @@ import { GoogleGenAI, ApiError, type Part } from "@google/genai";
 import type { DescribeSuccess } from "@/shared/contract";
 import { SYSTEM_PROMPT, describeUserPrompt, followUpUserPrompt } from "@/prompts/describe";
 import { ApiFailure } from "@/lib/http/errors";
-import { GEMINI_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_TIMEOUT_MS } from "./config";
+import { GEMINI_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_TIMEOUT_MS, USE_VERTEX, GCP_PROJECT, GCP_LOCATION } from "./config";
 import { normalize, type ModelOutput, type ParsedRequest } from "./validate";
 
 /** JSON schema Gemini must follow. Mirrors DescribeSuccess plus `usable`. */
@@ -22,9 +22,16 @@ const RESPONSE_SCHEMA = {
 
 let client: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {
+  if (client) return client;
+  if (USE_VERTEX) {
+    // Vertex AI with Application Default Credentials: no key in the app.
+    if (!GCP_PROJECT) throw new ApiFailure("not_configured", undefined, "GOOGLE_CLOUD_PROJECT missing");
+    client = new GoogleGenAI({ vertexai: true, project: GCP_PROJECT, location: GCP_LOCATION });
+    return client;
+  }
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new ApiFailure("not_configured", undefined, "GEMINI_API_KEY missing");
-  client ??= new GoogleGenAI({ apiKey });
+  client = new GoogleGenAI({ apiKey });
   return client;
 }
 
@@ -52,10 +59,17 @@ function mapError(err: unknown): ApiFailure {
   if (err instanceof Error && (err.name === "AbortError" || /aborted/i.test(err.message))) {
     return new ApiFailure("timeout", undefined, err.message);
   }
+  // Vertex mode without usable Application Default Credentials.
+  if (err instanceof Error && /credential|invalid_grant|reauth|unable to impersonate/i.test(err.message)) {
+    return new ApiFailure("not_configured", undefined, err.message);
+  }
   if (err instanceof ApiError) {
     if (err.status === 429) return new ApiFailure("rate_limited", undefined, err.message);
     if (err.status === 400 && /api key/i.test(err.message)) return new ApiFailure("not_configured", undefined, err.message);
-    if (err.status === 401 || err.status === 403) return new ApiFailure("not_configured", undefined, err.message);
+    // 401/403: bad key or no access. 402: AI Studio prepaid credits used up. Retrying won't help.
+    if (err.status === 401 || err.status === 402 || err.status === 403) {
+      return new ApiFailure("not_configured", undefined, `${err.status} ${err.message}`);
+    }
     if (err.status === 400 && /image|inline_?data|mime/i.test(err.message)) {
       return new ApiFailure("unclear_image", undefined, err.message);
     }

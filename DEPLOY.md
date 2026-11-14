@@ -30,6 +30,17 @@ gcloud run deploy wildlife-described --source . --region us-central1 --allow-una
 
 Check it with `curl https://<service-url>/api/health`, then `npm run smoke -- --base=https://<service-url> path/to/trex.jpg`.
 
+**No key at all (Vertex AI):** on Cloud Run the service runs as a service account, so Gemini can use Application Default Credentials and the Gemini key secret isn't needed. Enable the Vertex AI API and give the runtime service account access:
+
+```bash
+gcloud services enable aiplatform.googleapis.com
+```
+```bash
+gcloud projects add-iam-policy-binding $(gcloud config get-value project) --member="serviceAccount:$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')-compute@developer.gserviceaccount.com" --role=roles/aiplatform.user
+```
+
+Then deploy with `--set-env-vars MOCK=0,GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=<project-id>,GOOGLE_CLOUD_LOCATION=global,GEMINI_MODEL=gemini-2.5-flash` and leave out `--set-secrets`. Usage is billed to the project's Cloud Billing account. `/api/health` shows `"gemini_auth": "vertex-adc"`.
+
 **TTS key:** `/api/speak` uses `GOOGLE_TTS_API_KEY`, falling back to `GEMINI_API_KEY`. That works only if the key's project has the Text-to-Speech API enabled and the key isn't restricted to the Gemini API. If speak returns 502, create a separate key for TTS and add it as a second secret.
 
 **Fallback if Cloud Run fights you:** Firebase App Hosting deploys Next.js straight from GitHub. Set the same secret there. Don't spend more than 30 minutes on hosting. A laptop running `npm run build && npm start` behind `npx localtunnel` or similar still demos.
