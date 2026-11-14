@@ -1,4 +1,4 @@
-import { GoogleGenAI, ApiError, type Part } from "@google/genai";
+import { GoogleGenAI, ApiError, ThinkingLevel, type Part, type ThinkingConfig } from "@google/genai";
 import type { DescribeSuccess } from "@/shared/contract";
 import { SYSTEM_PROMPT, describeUserPrompt, followUpUserPrompt } from "@/prompts/describe";
 import { ApiFailure } from "@/lib/http/errors";
@@ -35,7 +35,35 @@ function getClient(): GoogleGenAI {
   return client;
 }
 
+/**
+ * Keep thinking short: it adds seconds before anything can be spoken, and
+ * thinking tokens count against maxOutputTokens. 2.5 models take a token
+ * budget; 3.x models take a level (and reject a budget).
+ */
+function thinkingFor(model: string): ThinkingConfig | undefined {
+  if (/^gemini-2\.5-flash/.test(model)) return { thinkingBudget: 0 };
+  if (/^gemini-[3-9]/.test(model)) return { thinkingLevel: ThinkingLevel.LOW };
+  return undefined;
+}
+
+/** Models that rejected our thinking setting; called without it from then on. */
+const noThinkingConfig = new Set<string>();
+
 async function callModel(model: string, parts: Part[], signal: AbortSignal) {
+  const thinking = noThinkingConfig.has(model) ? undefined : thinkingFor(model);
+  try {
+    return await generate(model, parts, signal, thinking);
+  } catch (err) {
+    if (thinking && err instanceof ApiError && err.status === 400 && /think/i.test(err.message)) {
+      console.warn(`[gemini] ${model} rejected thinking config, retrying without it: ${err.message.slice(0, 160)}`);
+      noThinkingConfig.add(model);
+      return generate(model, parts, signal, undefined);
+    }
+    throw err;
+  }
+}
+
+function generate(model: string, parts: Part[], signal: AbortSignal, thinking: ThinkingConfig | undefined) {
   return getClient().models.generateContent({
     model,
     contents: [{ role: "user", parts }],
@@ -44,12 +72,11 @@ async function callModel(model: string, parts: Part[], signal: AbortSignal) {
       responseMimeType: "application/json",
       responseJsonSchema: RESPONSE_SCHEMA,
       temperature: 0.4,
-      maxOutputTokens: 1024,
+      // Room for the longest reply ("tell me more", about 140 words of JSON)
+      // plus any thinking the model still does.
+      maxOutputTokens: 4096,
       abortSignal: signal,
-      // 2.5 Flash thinks by default, which adds seconds of latency we can't
-      // afford for a spoken reply. Newer models use other controls, so only
-      // touch it where we know the field applies.
-      ...(model.startsWith("gemini-2.5-flash") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      ...(thinking ? { thinkingConfig: thinking } : {}),
     },
   });
 }
@@ -117,6 +144,10 @@ export async function describe(req: ParsedRequest): Promise<DescribeResult> {
     }
 
     const text = res.text;
+    const finish = res.candidates?.[0]?.finishReason;
+    if (finish === "MAX_TOKENS") {
+      throw new ApiFailure("model_error", undefined, `reply cut off at maxOutputTokens (model=${model})`);
+    }
     if (!text) {
       const reason = res.candidates?.[0]?.finishReason ?? res.promptFeedback?.blockReason;
       throw new ApiFailure("model_error", undefined, `no text, reason=${reason}`);

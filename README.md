@@ -11,7 +11,7 @@ npm run dev                  # http://localhost:3000
 npm run smoke                # hits /api/health, /api/describe, /api/speak
 ```
 
-For real Gemini: set `GEMINI_API_KEY` in `.env.local` and `MOCK=0`. Run `npm run models` (with the key exported) to see which model names your key can use. The default is `gemini-2.5-flash`, which I could not confirm is still live today, so check this first. If it 404s, the server retries once with `gemini-flash-latest`.
+For real Gemini: set `GEMINI_API_KEY` in `.env.local` and `MOCK=0`. Run `npm run models` (with the key exported) to see which model names your key can use. The default is `gemini-3.5-flash` (our Vertex AI project got a 404 for `gemini-2.5-flash`). If it 404s, the server retries once with `gemini-3.1-flash-lite`.
 
 Phones only allow camera access over HTTPS. To test on a phone locally, use `npx next dev --experimental-https` or test on the Cloud Run URL.
 

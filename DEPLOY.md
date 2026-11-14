@@ -21,7 +21,7 @@ gcloud secrets add-iam-policy-binding gemini-api-key --member="serviceAccount:$(
 Deploy from the repo root. This uses the `Dockerfile`:
 
 ```bash
-gcloud run deploy wildlife-described --source . --region us-central1 --allow-unauthenticated --min-instances 1 --max-instances 3 --set-secrets GEMINI_API_KEY=gemini-api-key:latest --set-env-vars MOCK=0,GEMINI_MODEL=gemini-2.5-flash
+gcloud run deploy wildlife-described --source . --region us-central1 --allow-unauthenticated --min-instances 1 --max-instances 3 --set-secrets GEMINI_API_KEY=gemini-api-key:latest --set-env-vars MOCK=0,GEMINI_MODEL=gemini-3.5-flash
 ```
 
 `--min-instances 1` avoids a cold start in the middle of the demo. It costs a little while it runs, so set it back to 0 after the event.
@@ -39,7 +39,7 @@ gcloud services enable aiplatform.googleapis.com
 gcloud projects add-iam-policy-binding $(gcloud config get-value project) --member="serviceAccount:$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')-compute@developer.gserviceaccount.com" --role=roles/aiplatform.user
 ```
 
-Then deploy with `--set-env-vars MOCK=0,GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=<project-id>,GOOGLE_CLOUD_LOCATION=global,GEMINI_MODEL=gemini-2.5-flash` and leave out `--set-secrets`. Usage is billed to the project's Cloud Billing account. `/api/health` shows `"gemini_auth": "vertex-adc"`.
+Then deploy with `--set-env-vars MOCK=0,GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=<project-id>,GOOGLE_CLOUD_LOCATION=global,GEMINI_MODEL=gemini-3.5-flash` and leave out `--set-secrets`. Usage is billed to the project's Cloud Billing account. `/api/health` shows `"gemini_auth": "vertex-adc"`.
 
 **TTS key:** `/api/speak` uses `GOOGLE_TTS_API_KEY`, falling back to `GEMINI_API_KEY`. That works only if the key's project has the Text-to-Speech API enabled and the key isn't restricted to the Gemini API. If speak returns 502, create a separate key for TTS and add it as a second secret.
 
