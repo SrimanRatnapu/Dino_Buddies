@@ -1,0 +1,18 @@
+import { GEMINI_MODEL, isMock } from "@/lib/gemini/config";
+import { ttsKey, TTS_VOICE } from "@/lib/tts/google";
+import { CONTRACT_VERSION } from "@/shared/contract";
+
+export const dynamic = "force-dynamic";
+
+/** Quick check for A and for deploys. Never reveals keys. */
+export function GET() {
+  return Response.json({
+    ok: true,
+    contract: CONTRACT_VERSION,
+    mock: isMock(),
+    model: GEMINI_MODEL,
+    gemini_key: Boolean(process.env.GEMINI_API_KEY),
+    tts: Boolean(ttsKey()),
+    tts_voice: TTS_VOICE,
+  });
+}

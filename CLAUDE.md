@@ -38,7 +38,7 @@ Fill in the names. Each builder may be a person or a Claude Code agent.
 | Role | Builder | Owns |
 |---|---|---|
 | **A: Experience** | TBD | Stitch design, UI code, camera capture, speaking and voice input, accessibility, pitch visuals |
-| **B: Intelligence** | TBD | Gemini integration, prompts, API routes, TTS endpoint, Google API extras, hosting and deploy |
+| **B: Intelligence** | Claude Code agent | Gemini integration, prompts, API routes, TTS endpoint, Google API extras, hosting and deploy |
 
 ## File ownership
 Only the owner edits these. If you need a change in the other side's area, ask them or leave a note in `CONTRACT CHANGES` below.
@@ -143,6 +143,15 @@ Times are relative to kickoff. Replace with real clock times once demos are sche
 
 ## CONTRACT CHANGES
 (Log every change here: date or time, who, what changed, new version.)
+
+- **2026-11-14, B: clarifications and additive mock-only options. No shape change, still v1. A, please confirm or object.**
+  - Speaking follows A's `components/spokenText.ts`. On a first look the UI speaks `caveats` (if confidence is not high), `description`, `size_comparison`, then "Fun fact: " + `fun_fact`, so in default mode the server keeps size and fact out of `description` and returns both as full sentences. For `mode: "detailed"` and follow-up answers only `description` is spoken, so there it stands alone.
+  - Server guarantees: `caveats` is never empty when confidence is not high, and always `""` when it is high.
+  - `image` may be omitted on a follow-up if `question` and `previous` are sent. Sending it is still preferred.
+  - Error codes used: `bad_request` 400, `image_too_large` 413, `unclear_image` 422, `rate_limited` 429, `not_configured` 503, `model_error` 502, `timeout` 504. Listed in `shared/contract.ts`.
+  - Mock only: `?fixture=trex|giraffe|lowconf|error` query param, auto `followup` fixture when `question` is set, and `MOCK_DELAY_MS` env. Ignored in real mode.
+  - Added `GET /api/health` (status, no secrets).
+  - `next.config.ts` gains `output: "standalone"` for the Cloud Run image. `package.json` gains `@google/genai` and the `dev:mock`, `models` and `smoke` scripts.
 
 ## Backup ideas (only if this stalls)
 - Wildlife Rehab Triage: identify an injured animal, give "intervene or leave it" guidance, and look up the nearest rehabber with Maps.

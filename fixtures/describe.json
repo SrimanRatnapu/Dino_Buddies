@@ -1,0 +1,56 @@
+{
+  "_note": "Mock fixtures for POST /api/describe when MOCK=1. Pick one with ?fixture=trex|giraffe|lowconf|error (default trex). Any request with a question returns 'followup'.",
+  "trex": {
+    "status": 200,
+    "body": {
+      "subject": "Tyrannosaurus rex skeleton",
+      "confidence": "high",
+      "description": "This is a mounted Tyrannosaurus rex skeleton. It stands mid-stride on two thick back legs, its huge skull lowered and its long tail held straight out behind for balance. The bones are dark brown and ridged, on a low platform in a wide hall.",
+      "size_comparison": "It is about as long as a school bus, and its hips are higher than a doorway.",
+      "fun_fact": "Its teeth were about the size of bananas.",
+      "caveats": ""
+    }
+  },
+  "giraffe": {
+    "status": 200,
+    "body": {
+      "subject": "Giraffe",
+      "confidence": "high",
+      "description": "This is a giraffe in a grassy enclosure, reaching up to eat leaves from a tall tree. Its neck rises steeply above a sloping back. Its coat is a patchwork of brown shapes on cream, like cracked dry earth.",
+      "size_comparison": "It is taller than a basketball hoop.",
+      "fun_fact": "A giraffe's tongue is dark purple and about as long as your forearm.",
+      "caveats": ""
+    }
+  },
+  "lowconf": {
+    "status": 200,
+    "body": {
+      "subject": "Triceratops skull, possibly a cast",
+      "confidence": "medium",
+      "description": "This looks like a Triceratops skull on a low plinth. It has a wide bony frill at the back like a fan, and three horns: two long ones above the eyes and a short one on the nose. The surface is rough and grey.",
+      "size_comparison": "It is about as long as a sofa.",
+      "fun_fact": "Triceratops lived at the same time and place as Tyrannosaurus rex.",
+      "caveats": "I'm not certain, but this looks like a Triceratops skull."
+    }
+  },
+  "error": {
+    "status": 422,
+    "body": {
+      "error": {
+        "code": "unclear_image",
+        "message": "I couldn't see that clearly. Try again with more light."
+      }
+    }
+  },
+  "followup": {
+    "status": 200,
+    "body": {
+      "subject": "Tyrannosaurus rex skeleton",
+      "confidence": "high",
+      "description": "It is about twelve metres long, roughly the length of a school bus, and about four metres tall at the hips, so its back would brush a basketball hoop. A living one weighed about as much as an elephant.",
+      "size_comparison": "It is about as long as a school bus.",
+      "fun_fact": "",
+      "caveats": ""
+    }
+  }
+}
