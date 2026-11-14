@@ -6,7 +6,9 @@ const CLOUD_TIMEOUT_MS = 4000;
 
 let token = 0;
 let audio: HTMLAudioElement | null = null;
-let cloudState: "unknown" | "available" | "missing" = "unknown";
+/** Cloud TTS is skipped until this time (ms since epoch). Infinity = for the session. */
+let cloudOffUntil = 0;
+const CLOUD_RETRY_MS = 120_000;
 
 /** A tiny silent WAV, used to unlock audio playback on iOS inside a tap. */
 function silentWavUrl(): string {
@@ -62,7 +64,7 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
   stopSpeaking();
   const my = token;
   if (!text.trim()) return;
-  if (opts.cloud && cloudState !== "missing") {
+  if (opts.cloud && Date.now() >= cloudOffUntil) {
     const done = await speakCloud(text, my);
     if (done || my !== token) return;
   }
@@ -82,12 +84,15 @@ async function speakCloud(text: string, my: number): Promise<boolean> {
     clearTimeout(timer);
     const type = res.headers.get("content-type") ?? "";
     if (!res.ok || !type.startsWith("audio/")) {
-      if (res.status === 404 || res.status === 501) cloudState = "missing";
+      // Not built (404/501) or not configured (503): skip for the session.
+      // Upstream failure (502) or a non-audio reply: skip for a while.
+      // Rate limits and timeouts are transient: try again next time.
+      if ([404, 501, 503].includes(res.status)) cloudOffUntil = Infinity;
+      else if (res.status !== 429 && res.status !== 504) cloudOffUntil = Date.now() + CLOUD_RETRY_MS;
       return false;
     }
     const blob = await res.blob();
     if (my !== token) return true;
-    cloudState = "available";
     return await playBlob(blob, my);
   } catch {
     clearTimeout(timer);
@@ -143,9 +148,26 @@ function pickVoice(): SpeechSynthesisVoice | null {
   return chosenVoice;
 }
 
-/** Splits into sentences: long single utterances get cut off in some browsers. */
-function chunks(text: string): string[] {
-  return (text.match(/[^.!?]+[.!?]*["”’)]*\s*/g) ?? [text]).map((s) => s.trim()).filter(Boolean);
+/** A period that ends an initial ("T. rex") or a common abbreviation, not a sentence. */
+const NOT_SENTENCE_END = /(?:^|[\s(])(?:[A-Z]|Mr|Mrs|Ms|Dr|St|Mt|Ft|vs|etc|approx|e\.g|i\.e|No)\.$/;
+
+/**
+ * Splits into sentences: long single utterances get cut off in some browsers.
+ * Splits only at end punctuation followed by a space, so decimals ("12.5")
+ * stay whole, and skips initials and abbreviations so "T. rex" isn't broken.
+ */
+export function chunks(text: string): string[] {
+  const out: string[] = [];
+  const end = /[.!?]+["”’)]*\s+/g;
+  let start = 0;
+  for (let m = end.exec(text); m; m = end.exec(text)) {
+    const upToPunct = text.slice(start, m.index + 1);
+    if (text[m.index] === "." && NOT_SENTENCE_END.test(upToPunct)) continue;
+    out.push(text.slice(start, m.index + m[0].length).trim());
+    start = m.index + m[0].length;
+  }
+  out.push(text.slice(start).trim());
+  return out.filter(Boolean);
 }
 
 async function speakBrowser(text: string, my: number, rate: number): Promise<void> {

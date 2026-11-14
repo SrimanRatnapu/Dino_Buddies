@@ -145,13 +145,22 @@ export default function App() {
     await run({ image, mode: "default" }, "describe");
   }
 
-  function describe() {
+  /**
+   * Takes a photo and describes it. `fromTap` is false when called after an
+   * await (a voice command): browsers block opening the photo picker then.
+   */
+  function describe(fromTap = true) {
     unlock();
     quiet();
     const frame = camera.status === "ready" ? captureFrame(videoRef.current) : null;
     if (!frame) {
-      // No live camera: open the phone's camera or photo picker instead.
-      fileRef.current?.click();
+      if (fromTap) {
+        // No live camera: open the phone's camera or photo picker instead.
+        fileRef.current?.click();
+      } else {
+        cue.error();
+        void say("The camera isn't on. Tap Describe at the bottom of the screen to take a photo.");
+      }
       return;
     }
     cue.capture();
@@ -187,14 +196,14 @@ export default function App() {
     );
   }
 
-  function askQuestion(text: string) {
+  function askQuestion(text: string, fromTap = true) {
     let image = imageRef.current;
     const base = baseRef.current;
     if (!image) {
       // Asked before any photo: take one now and answer about it.
       image = camera.status === "ready" ? captureFrame(videoRef.current) : null;
       if (!image) {
-        describe();
+        describe(fromTap);
         return;
       }
       cue.capture();
@@ -262,8 +271,8 @@ export default function App() {
       if (cmd.kind === "stop") stop();
       else if (cmd.kind === "repeat") repeat();
       else if (cmd.kind === "more" && baseRef.current) more();
-      else if (cmd.kind === "describe") describe();
-      else askQuestion(cmd.kind === "question" ? cmd.text : heard);
+      else if (cmd.kind === "describe") describe(false);
+      else askQuestion(cmd.kind === "question" ? cmd.text : heard, false);
     } catch (err) {
       if (listenRef.current !== ctrl) return;
       listenRef.current = null;
@@ -305,7 +314,10 @@ export default function App() {
     if (typing) questionRef.current?.focus();
   }, [phase, shown, typing]);
 
-  // Keyboard shortcuts (also work with Bluetooth keyboards and switch devices).
+  // Keyboard shortcuts for Bluetooth keyboards and switch devices. Escape works
+  // anywhere. Letter keys work only while focus is in the stage or the action
+  // buttons (WCAG 2.1.4: character-key shortcuts active only on focus), so they
+  // can't fire from a stray key press or from speech input elsewhere on the page.
   const actions = useRef({ describe, more, listen, repeat, stop, cancel });
   actions.current = { describe, more, listen, repeat, stop, cancel };
   const phaseRef = useRef(phase);
@@ -322,7 +334,7 @@ export default function App() {
       const busy = phaseRef.current === "looking" || phaseRef.current === "listening";
       const k = e.key.toLowerCase();
       if (k === "escape") busy ? a.cancel() : a.stop();
-      else if (busy) return;
+      else if (busy || !target?.closest("[data-shortcuts]")) return;
       else if (k === "d") a.describe();
       else if (k === "a") void a.listen();
       else if (k === "r") a.repeat();
@@ -354,7 +366,7 @@ export default function App() {
         </button>
       </header>
 
-      <main className="stage">
+      <main className="stage" data-shortcuts>
         <video ref={videoRef} className="preview" autoPlay muted playsInline aria-hidden="true" />
 
         {phase === "idle" && (
@@ -431,7 +443,7 @@ export default function App() {
         )}
       </main>
 
-      <nav className="controls" aria-label="Actions">
+      <nav className="controls" aria-label="Actions" data-shortcuts>
         {phase === "result" && (
           <div className="secondary-row">
             {speaking ? (
@@ -484,7 +496,7 @@ export default function App() {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={describe}
+            onClick={() => describe()}
             aria-keyshortcuts="D"
             aria-describedby="describe-help"
           >

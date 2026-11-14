@@ -9,8 +9,9 @@ npm install
 ```bash
 npm run dev
 ```
-- Open http://localhost:3000/?mock=1 to use the **client-side mock**. It needs no backend and cycles through T. rex skeleton (high confidence), giraffe (medium, with caveat), and an error. A "Demo data" badge shows it's on. Follow-up questions and "Tell me more" return canned T. rex answers.
-- Without `?mock=1` the app calls `POST /api/describe`. Until B ships it, the app says "The describe service isn't running yet."
+- **Real Gemini:** put your key in `.env.local` (copy `.env.example`, set `MOCK=0` and `GEMINI_API_KEY`), then `npm run dev`.
+- **Server mock:** `npm run dev:mock` serves B's fixtures from `/fixtures/describe.json` through the real route, so validation and error replies are exercised.
+- **In-browser mock:** add `?mock=1` to the URL. It needs no server call at all, so it's the offline backup on stage. It uses the same fixtures and cycles through T. rex skeleton (high confidence), Triceratops skull (medium, with caveat), giraffe, and an error. A "Demo data" badge shows it's on. Follow-up questions return the T. rex size answer.
 - **On a phone:** the camera needs https. Either deploy (Firebase Hosting or Cloud Run), or run `npm run dev:https` and open `https://<laptop-ip>:3000` on the phone, accepting the self-signed certificate warning. If the camera can't start, Describe opens the phone's own camera or photo picker, so the demo still works.
 
 ## Demo path (about 3 minutes)
