@@ -1,0 +1,149 @@
+# Project Context: Wildlife Described (working title)
+
+Read this first. It is the shared context and the work-split contract for a weekend hackathon build, used by two builders (people or agents) working in parallel. Keep it updated as decisions change.
+
+## The event
+- GDGC DevFest hackathon, weekend of Nov 14-15, 2026. Time is very limited, so favor a working demo over completeness.
+- Prize tracks:
+  1. **Best Integration of Gemini or Google API**
+  2. **Best Startup Potential**
+  3. **Best Social Impact**
+  4. **Best UI**
+- Target: tracks 1, 3 and 4. Track 2 gets one pitch slide as a hypothesis only.
+- Unknown (ask the user): team size confirmation, demo/judging time, whether one team can win multiple tracks, any "must use" tech rules.
+
+## The pitch (drives the demo)
+The presenter (Sriman) opens with a photo of himself posing with the Google dinosaur (ties the project to Google), then tells his lifelong-love-of-dinosaurs story. The project answers: museums, zoos and trails are built to be looked at, so people who are blind or low-vision are shut out. The demo features a **dinosaur skeleton or fossil exhibit** (museum photos or casts) before moving to live animals. Sriman does computer vision research on indoor wayfinding for visually impaired users, which gives the accessibility angle real credibility. Mention it briefly.
+
+## The product
+A mobile-friendly web app. The user points the phone camera at an exhibit, animal or scene and hears a spoken description.
+
+Core loop:
+1. Capture a frame (big button, or voice command like "describe").
+2. Send the image to the backend, which calls Gemini vision.
+3. Receive a structured response (see contract).
+4. Speak it aloud. Offer a follow-up question by voice ("how big is it?").
+
+Description style: lead with what it is, then size and shape in everyday comparisons ("about as long as a school bus"), posture, texture, surroundings, then one or two interesting facts. Spoken output under about 20 seconds by default, with a "tell me more" option.
+
+## Requirements by track
+- **Gemini/Google integration:** Gemini vision is the core model. Add at least one more Google API: Text-to-Speech (browser speech as fallback), Maps/Places for context, and Firebase or Cloud Run for hosting. Use current Gemini model names from the official docs and keep the model name in one config value.
+- **Social impact:** designed for blind and low-vision visitors at museums, zoos and parks. Have one concrete user story ready.
+- **Best UI:** accessibility-first. Large touch targets, high contrast, screen-reader labels, voice control, audio or haptic confirmation, nothing that depends on seeing the screen. The demo should show the app used without looking at the screen. UI is designed in **Google Stitch** (see below).
+- **Startup potential (one slide):** sell to museums, zoos and parks as an accessibility tool. Do not cite market-size numbers unless verified.
+
+## Roles
+Fill in the names. Each builder may be a person or a Claude Code agent.
+
+| Role | Builder | Owns |
+|---|---|---|
+| **A: Experience** | TBD | Stitch design, UI code, camera capture, speaking and voice input, accessibility, pitch visuals |
+| **B: Intelligence** | TBD | Gemini integration, prompts, API routes, TTS endpoint, Google API extras, hosting and deploy |
+
+## File ownership
+Only the owner edits these. If you need a change in the other side's area, ask them or leave a note in `CONTRACT CHANGES` below.
+
+- **A owns:** `/app` pages and components, `/components`, `/styles`, `/design` (Stitch exports), `DESIGN.md`, `DEMO.md` (demo script and test images)
+- **B owns:** `/app/api/*`, `/lib/gemini`, `/lib/tts`, `/prompts`, `/fixtures`, `.env.example`, deploy config
+- **Shared, change only by agreement:** the contract below, `/shared/contract.ts` (types mirroring it), this file
+
+## The contract (interface between A and B)
+Version: **v1**. Any change bumps the version and gets logged under `CONTRACT CHANGES`. Neither side changes shapes silently.
+
+### `POST /api/describe`
+Request (JSON):
+```json
+{
+  "image": "base64 JPEG, long edge max 1024px, no data: prefix",
+  "mode": "default | detailed",
+  "question": "optional string for a follow-up",
+  "previous": { "subject": "string", "description": "string" }
+}
+```
+Success response (200):
+```json
+{
+  "subject": "string, what it is",
+  "confidence": "high | medium | low",
+  "description": "string, spoken-ready, plain language",
+  "size_comparison": "string",
+  "fun_fact": "string",
+  "caveats": "string, empty if none"
+}
+```
+Error response (4xx/5xx):
+```json
+{ "error": { "code": "string", "message": "short, speakable sentence" } }
+```
+Error messages are read aloud to a blind user, so write them as plain spoken sentences ("I couldn't see that clearly. Try again with more light.").
+
+Rules:
+- `confidence` below `high` means the UI must speak `caveats` first (for example "I'm not certain, but this looks like...").
+- The server never returns safety advice such as whether it is safe to approach an animal.
+- The API key lives only on the server.
+
+### `POST /api/speak` (optional, B builds if time allows)
+Request: `{ "text": "string" }`. Response: `audio/mpeg` bytes from Google Cloud Text-to-Speech.
+If this endpoint is missing or fails, A falls back to the browser's `speechSynthesis`. A should build the fallback first so the demo never depends on this endpoint.
+
+### Mock mode
+B ships `/api/describe` in **mock mode first**: when `MOCK=1`, it returns a fixture from `/fixtures/describe.json` (a T. rex skeleton, a giraffe, an error case). A builds against this from the start. Real Gemini replaces the mock without changing the shape.
+
+## Google Stitch (UI design, owned by A)
+Stitch is Google's AI UI design tool. It generates screens from a text prompt or an image or sketch, and exports code and a `DESIGN.md` design-system file. It also has an MCP server that lets a coding agent read the designs directly. Setup details are in the official docs (https://stitch.withgoogle.com/docs/mcp/setup/); check them rather than guessing commands.
+
+Workflow:
+1. **Time-box Stitch to about 45 minutes.** It is a fast first draft, not the finished UI.
+2. Generate 3 screens: **Capture** (camera view with one huge describe button), **Result** (description text, replay and "tell me more", high contrast), **Follow-up** (voice question state).
+3. Export `DESIGN.md` into the repo root and the screen code into `/design`.
+4. A wires the generated markup to the real behavior: camera, calls to `/api/describe`, speech. Stitch produces front-end UI only, so it will not do any of this.
+5. **Audit the output for accessibility** before trusting it: color contrast, tap target size, focus order, ARIA labels, and that every state is announced aloud. Generated UI often looks good and still fails these.
+
+Stitch prompt seed: "Mobile web app for blind and low-vision museum visitors. Huge centered camera button, high-contrast dark theme, large readable text, minimal controls, friendly and calm. Screens: capture, result, follow-up question."
+
+## Suggested stack
+- Frontend: React/Next.js (or plain web app), installable as a PWA, `getUserMedia` for the camera.
+- Backend: thin API routes (Next.js routes or Cloud Run) holding the Gemini key.
+- Speech: browser `speechSynthesis` first, Google Cloud TTS as an upgrade. Browser speech recognition for voice commands if time allows.
+- Hosting: Firebase Hosting or Cloud Run.
+
+## Sync points
+Times are relative to kickoff. Replace with real clock times once demos are scheduled.
+1. **T+0:** both read this file and agree on the contract v1. Nothing else starts before this.
+2. **~T+1h:** B has mock `/api/describe` running. A has the Stitch screens drafted.
+3. **~T+3h:** first end-to-end loop: camera, real Gemini, spoken result. Do not add features before this works.
+4. **Feature freeze, 3 hours before demos:** only bug fixes, accessibility fixes and demo prep after this.
+5. **1 hour before demos:** rehearse the full demo path twice on a real phone.
+
+## Demo path (lock this first)
+1. Photo of a well-known dinosaur skeleton or museum cast. App describes it aloud.
+2. A live animal image, such as a zoo photo or a printed image.
+3. A voice follow-up question.
+4. Show the accessible UI with the screen turned away or eyes closed.
+
+## Scope
+**In:** camera capture, Gemini description, spoken output, one voice follow-up, accessible UI built from Stitch, one extra Google API.
+
+**Nice to have:** Maps/Places context, multi-language output, saved history.
+
+**Out for now:** custom model training, 3D modeling, indoor navigation, user accounts.
+
+## Risks and rules
+- Gemini can misidentify animals and fossils. Always surface confidence.
+- Keep latency low. A resizes images to 1024px before upload. Speak a short "looking now" cue while waiting.
+- Do not use real people's images or copyrighted exhibit photos in public materials. Use own photos or freely licensed images.
+- Never commit API keys. Use environment variables and keep `.env.example` current.
+
+## Working agreements
+- **Main always runs.** Small commits, merge to `main` often. Use branches named `ui/*` (A) and `api/*` (B). If two agents work at once, use separate git worktrees.
+- Prefer the simplest thing that demos well. Ask before adding dependencies.
+- Put all prompts in `/prompts` so they are easy to tune.
+- If you are blocked by the other side, work against the mock and note it, do not wait.
+- If a change breaks the contract, stop, log it below, and tell the other builder before merging.
+
+## CONTRACT CHANGES
+(Log every change here: date or time, who, what changed, new version.)
+
+## Backup ideas (only if this stalls)
+- Wildlife Rehab Triage: identify an injured animal, give "intervene or leave it" guidance, and look up the nearest rehabber with Maps.
+- FossilID: Gemini vision identification of possible fossil finds with a "report it, don't dig it" flow.
