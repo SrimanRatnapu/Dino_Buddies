@@ -1,0 +1,465 @@
+/* Wildlife Described: accessibility-first, high-contrast dark theme.
+   Tokens and rules are documented in DESIGN.md. */
+
+:root {
+  --bg: #000000;
+  --surface: #141414;
+  --surface-2: #242424;
+  --line: #5c5c5c;
+  --text: #ffffff;
+  --text-muted: #d6d6d6; /* 14.4:1 on --bg */
+  --accent: #ffd60a; /* 14.9:1 on --bg */
+  --accent-ink: #000000;
+  --caution: #ffb4a9; /* 12.4:1 on --bg */
+  --focus: #5cc8ff;
+
+  --radius-lg: 28px;
+  --radius-md: 20px;
+  --gap: 12px;
+  --target: 76px; /* minimum tap target height */
+
+  --fs-body: 1.375rem; /* 22px */
+  --fs-title: 2.25rem; /* 36px */
+  --fs-primary: 2.25rem;
+  --fs-button: 1.25rem;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-size: var(--fs-body);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+:focus-visible {
+  outline: 4px solid var(--focus);
+  outline-offset: 4px;
+}
+
+/* ---------- Layout: header, stage, controls (main action always at the bottom) ---------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  gap: var(--gap);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+}
+
+.brand {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+  flex: 1;
+  letter-spacing: 0.01em;
+}
+
+.badge {
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 2px solid var(--accent);
+  color: var(--accent);
+}
+
+.toggle {
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.toggle[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface);
+  border: 2px solid var(--surface-2);
+}
+
+.preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--surface);
+}
+
+.app[data-phase="result"] .preview,
+.app[data-phase="error"] .preview,
+.app[data-phase="looking"] .preview,
+.app[data-phase="listening"] .preview {
+  opacity: 0.25;
+}
+
+.hint {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.82);
+  font-size: 1.125rem;
+}
+
+.hint p {
+  margin: 0;
+}
+
+/* ---------- Waiting states ---------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  text-align: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.overlay-text {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 700;
+}
+
+.overlay-sub {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.pulse {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 8px solid var(--accent);
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.pulse .icon {
+  width: 56px;
+  height: 56px;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(0.88);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+}
+
+/* ---------- Result ---------- */
+
+.result {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 22px 20px 28px;
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.result h2 {
+  font-size: var(--fs-title);
+  line-height: 1.15;
+  margin: 0 0 14px;
+  color: var(--accent);
+}
+
+.result h2:focus {
+  outline: none;
+}
+
+.result h2:focus-visible {
+  outline: 4px solid var(--focus);
+}
+
+.asked {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 1.125rem;
+}
+
+.desc {
+  margin: 0 0 18px;
+}
+
+.caveat {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-left: 6px solid var(--caution);
+  background: var(--surface-2);
+  border-radius: 8px;
+  color: var(--caution);
+}
+
+.fact {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.label {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+
+.label-caution {
+  color: var(--caution);
+}
+
+/* ---------- Error ---------- */
+
+.error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.error p {
+  margin: 0;
+  max-width: 22ch;
+  text-align: center;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--caution);
+}
+
+.error p:focus {
+  outline: none;
+}
+
+/* ---------- Typed question fallback ---------- */
+
+.ask-form {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 2px solid var(--accent);
+}
+
+.ask-form label {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.ask-row {
+  display: flex;
+  gap: 10px;
+}
+
+.ask-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 60px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 2px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.ask-row .btn {
+  min-height: 60px;
+  padding: 0 20px;
+}
+
+/* ---------- Controls ---------- */
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.secondary-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gap);
+}
+
+.secondary-row.two {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 3px solid transparent; /* visible in forced-colors mode */
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  transition: transform 80ms ease;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-secondary {
+  min-height: var(--target);
+  padding: 8px;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-button);
+  line-height: 1.1;
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.btn-secondary .icon {
+  width: 28px;
+  height: 28px;
+}
+
+.btn-primary {
+  min-height: 30vh;
+  font-size: var(--fs-primary);
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: var(--radius-lg);
+  flex-direction: column;
+}
+
+.btn-primary .icon {
+  width: 64px;
+  height: 64px;
+}
+
+.app[data-phase="result"] .btn-primary {
+  min-height: 18vh;
+  flex-direction: row;
+}
+
+.app[data-phase="result"] .btn-primary .icon {
+  width: 44px;
+  height: 44px;
+}
+
+.btn-cancel {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+
+/* Short screens (landscape phones): keep everything reachable. */
+@media (max-height: 560px) {
+  .btn-primary {
+    min-height: 120px;
+  }
+  .app[data-phase="result"] .btn-primary {
+    min-height: 88px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+  }
+  .btn {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .btn,
+  .toggle,
+  .fact,
+  .caveat {
+    border: 3px solid ButtonText;
+  }
+}
