@@ -490,6 +490,9 @@ export default function App() {
           >
             <CameraIcon />
             {phase === "result" ? "Describe new" : phase === "error" ? "Try again" : "Describe"}
+            <span className="btn-hint" aria-hidden="true">
+              Tap anywhere in this area
+            </span>
           </button>
         )}
         <p id="describe-help" className="sr-only">

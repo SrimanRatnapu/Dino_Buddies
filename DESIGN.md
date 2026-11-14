@@ -1,6 +1,6 @@
 # DESIGN.md: Wildlife Described
 
-Owner: A (Experience). This is the design system the UI code follows. Google Stitch exports, when they exist, go in `/design`. Reconcile them against this file. Accessibility rules here win over anything a generated screen does.
+Owner: A (Experience). This is the design system the UI code follows. It merges the Google Stitch design system (`/design/stitch/DESIGN.stitch.md`, screens in `/design/stitch/`) with the app's accessibility rules. Where the two conflict, the accessibility rules here win. See **Stitch reconciliation** below.
 
 ## Principles
 1. **Works with eyes closed.** Every state change gets a sound, a vibration where the phone supports it, and spoken words. Nothing depends on seeing the screen.
@@ -13,14 +13,18 @@ Owner: A (Experience). This is the design system the UI code follows. Google Sti
 | Token | Value | Use | Contrast on black |
 |---|---|---|---|
 | `--bg` | `#000000` | page | |
-| `--surface` / `--surface-2` | `#141414` / `#242424` | cards, secondary buttons | |
+| `--surface` / `--surface-2` | `#161616` / `#222222` | cards, secondary buttons (Stitch surface tiers) | |
+| `--line` | `#ffffff` | 2px borders on secondary controls (Stitch) | 21:1 |
 | `--text` | `#ffffff` | body | 21:1 |
 | `--text-muted` | `#d6d6d6` | secondary text | 14.4:1 |
 | `--accent` | `#ffd60a` | main button, titles, labels | 14.9:1 (black text on it: 14.9:1) |
 | `--caution` | `#ffb4a9` | caveats, errors | 12.4:1 (9.1:1 on `--surface-2`) |
-| `--focus` | `#5cc8ff` | 4px focus ring | 11.2:1 |
+| `--focus` | `#ffd60a` | 4px focus ring with a black gap (Stitch) | 14.9:1 |
+| `--info` | `#5ac8fa` | mode toggles and status badges (Stitch tertiary) | 11.2:1 |
 
-Type: **Atkinson Hyperlegible** (Google Fonts, designed by the Braille Institute for low-vision readers). Body 22px, titles 36px, main button 36px, secondary buttons 20px bold.
+Type: **Atkinson Hyperlegible Next** (Google Fonts, designed by the Braille Institute for low-vision readers). Body 22px, titles 36px, main button 36px, secondary buttons 20px bold, nothing interactive under 20px. Letter spacing 0.01em.
+
+Shape: 8px corners on controls and cards, 12px on the stage and main button. No pill shapes (Stitch: square-ish footprints are easier to find by touch). 16px minimum between tap targets.
 
 Targets: secondary buttons at least 76px tall. The main button takes at least 30% of the viewport height (18% on the result screen). The header toggle is 48px. All are well above the 44px WCAG and Apple minimum.
 
@@ -47,6 +51,18 @@ Targets: secondary buttons at least 76px tall. The main button takes at least 30
 ## Motion and modes
 - `prefers-reduced-motion` turns off the pulse and the press animation.
 - `forced-colors` (Windows high contrast) gives every button a system-colored border.
+
+## Stitch reconciliation
+Stitch generated three screens (capture, result, follow-up) and a design system. Kept and changed as follows.
+
+**Adopted:** yellow `#FFD60A` primary on black with black text, Atkinson Hyperlegible Next, 2px white borders on secondary controls, soft 8px corners and no pills, yellow focus ring, 16px target spacing, icon plus text label on every button, at most 3 secondary buttons in a row, primary action pinned to the bottom third, the "Tap anywhere in this area" hint on the main button, the caution style for uncertainty.
+
+**Not adopted, and why:**
+- **Bottom tab bar (Capture, Result, Follow-up).** It adds three more targets below the main button, so the main action is no longer at the very bottom. The app moves between states on its own, so tabs aren't needed.
+- **"Hold to speak".** Press-and-hold is awkward with VoiceOver and TalkBack (it takes a double-tap-and-hold gesture). The app uses tap to ask, with automatic end of speech.
+- **"Artifact detected nearby (3 ft)", gallery numbers, audio scrubber, Save tour, Type code.** These are features we don't have. Showing them would promise more than the demo does.
+- **Museum logo, profile avatar and "Speech Active" header.** The logo image was broken and the header text overlapped at phone width. Replaced by the app name and the App voice toggle.
+- **Uppercase button labels.** All-caps text is harder to read for low-vision users. Labels are sentence case.
 
 ## Accessibility audit checklist (run on any Stitch output before using it)
 - [ ] Text contrast 7:1 or better (AAA). Large text 4.5:1 or better.

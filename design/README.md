@@ -1,8 +1,13 @@
 # /design: Google Stitch exports
 
-Owner: A (Experience). Put Stitch screen exports here (HTML or code, plus screenshots), and the exported `DESIGN.md` at the repo root after merging it with the existing one.
+Owner: A (Experience).
 
-The working UI already exists in `/components` and `/styles`, built from the rules in `/DESIGN.md`. Use Stitch to explore and polish the visuals, then carry over what's better (layout, spacing, illustration, color), keeping the accessibility rules. Time-box this to about 45 minutes.
+## What's here
+`/design/stitch/` holds the Stitch output, unchanged:
+- `capture_artwork/`, `artwork_audio_description/`, `ask_follow_up_question/`: each has `screen.png` and `code.html`. These are static mockups that load Tailwind and fonts from CDNs; the app does not serve them.
+- `DESIGN.stitch.md`: Stitch's design system ("High-Contrast Museum Access").
+
+The app's working design system is `/DESIGN.md`, which merges Stitch's tokens with the accessibility rules. Its **Stitch reconciliation** section lists what was adopted and what was left out.
 
 ## Prompts
 Seed (from CLAUDE.md):

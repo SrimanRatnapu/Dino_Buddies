@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><meta content="mobile_tab" name="shell-type"/><title>Aura Guide</title><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,700;1,400&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24..48,400..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{width:100%;margin:0;padding:0;background-color:#131313;color:#e5e2e1;}body{overscroll-behavior:none;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "on-secondary-fixed-variant": "#454747", "on-surface-variant": "#d0c6ab", "surface-tint": "#e9c400", "surface-container-highest": "#353534", "primary-fixed": "#ffe171", "inverse-on-surface": "#313030", "error": "#ffb4ab", "surface-container-lowest": "#0e0e0e", "surface": "#131313", "secondary-container": "#454747", "surface-container": "#201f1f", "secondary-fixed-dim": "#c6c6c7", "surface-container-high": "#2a2a2a", "tertiary-fixed-dim": "#74d1ff", "background": "#131313", "secondary-fixed": "#e2e2e2", "on-secondary-fixed": "#1a1c1c", "on-tertiary": "#003548", "surface-dim": "#131313", "outline": "#999077", "on-background": "#e5e2e1", "on-secondary": "#2f3131", "tertiary": "#edf7ff", "primary-fixed-dim": "#e9c400", "on-primary-fixed": "#221b00", "on-primary": "#3b2f00", "surface-container-low": "#1c1b1b", "inverse-primary": "#705d00", "on-surface": "#e5e2e1", "on-tertiary-fixed": "#001e2b", "primary": "#fff5dc", "secondary": "#c6c6c7", "on-error": "#690005", "surface-bright": "#393939", "on-secondary-container": "#b4b5b5", "inverse-surface": "#e5e2e1", "surface-variant": "#353534", "on-tertiary-fixed-variant": "#004d67", "tertiary-fixed": "#c1e8ff", "tertiary-container": "#abe1ff", "on-error-container": "#ffdad6", "on-primary-fixed-variant": "#554600", "error-container": "#93000a", "outline-variant": "#4d4632", "on-tertiary-container": "#006688", "primary-container": "#ffd60a", "on-primary-container": "#705d00" }, "borderRadius": { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" }, "spacing": { "space-xs": "0.5rem", "margin": "1.5rem", "space-xl": "3rem", "space-md": "1.5rem", "space-sm": "1rem", "space-lg": "2rem", "gutter": "1.5rem" }, "fontFamily": { "body-md": ["Atkinson Hyperlegible Next"], "label-sm": ["Atkinson Hyperlegible Next"], "headline-sm": ["Atkinson Hyperlegible Next"], "headline-xl": ["Atkinson Hyperlegible Next"], "label-md": ["Atkinson Hyperlegible Next"], "body-lg": ["Atkinson Hyperlegible Next"], "headline-lg-mobile": ["Atkinson Hyperlegible Next"], "headline-lg": ["Atkinson Hyperlegible Next"], "headline-md": ["Atkinson Hyperlegible Next"], "label-lg": ["Atkinson Hyperlegible Next"], "headline-xl-mobile": ["Atkinson Hyperlegible Next"], "body-sm": ["Atkinson Hyperlegible Next"] }, "fontSize": { "body-md": ["22px", { "lineHeight": "34px", "letterSpacing": "0.01em", "fontWeight": "400" }], "label-sm": ["20px", { "lineHeight": "26px", "letterSpacing": "0.02em", "fontWeight": "600" }], "headline-sm": ["24px", { "lineHeight": "34px", "letterSpacing": "0.01em", "fontWeight": "600" }], "headline-xl": ["36px", { "lineHeight": "48px", "letterSpacing": "0.02em", "fontWeight": "700" }], "label-md": ["22px", { "lineHeight": "28px", "letterSpacing": "0.02em", "fontWeight": "700" }], "body-lg": ["24px", { "lineHeight": "36px", "letterSpacing": "0.01em", "fontWeight": "400" }], "headline-lg-mobile": ["26px", { "lineHeight": "36px", "letterSpacing": "0.015em", "fontWeight": "700" }], "headline-lg": ["32px", { "lineHeight": "42px", "letterSpacing": "0.015em", "fontWeight": "700" }], "headline-md": ["28px", { "lineHeight": "38px", "letterSpacing": "0.01em", "fontWeight": "700" }], "label-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "0.02em", "fontWeight": "700" }], "headline-xl-mobile": ["30px", { "lineHeight": "40px", "letterSpacing": "0.02em", "fontWeight": "700" }], "body-sm": ["20px", { "lineHeight": "30px", "letterSpacing": "0.01em", "fontWeight": "400" }] } } } };</script><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head><body class="bg-surface text-on-surface font-body-md text-body-md flex flex-col min-h-screen"><header class="fixed top-0 inset-x-0 z-50 bg-surface/90 backdrop-blur-xl pt-safe shadow-[0_4px_20px_rgba(0,0,0,0.8)]"><div class="h-24 px-margin flex items-center justify-between gap-space-sm"><div class="flex items-center gap-space-sm min-w-0"><img alt="Aura Museum Audio Lens Logo" class="h-8 w-auto object-contain flex-shrink-0" src="https://lh3.googleusercontent.com/aida/ALJJyrBmUwqYrh2X29uUeR2WBLJbpPq84dG4NaHglbL7hIhUQgin-EofVl9RkBajmqIDBnqorgh0dUarv2ExXgjNlG2SjiKNGO80S7rcBdtMUI2M0svb1b7AAhFyOWZbxymxSxkxDAE3yBYkU2DRXMc6k7apeZjkeh76L2grefgXXbFTfEkMYtRmOzEbn3mOJudN-Pkf9W2oRQEwrDNDnvQ1kh5K6AnuTs5QW5_l4dCTd9Jf"/><div class="flex flex-col min-w-0"><div class="flex items-center gap-space-xs"><span class="font-headline-sm text-headline-sm text-on-surface font-bold truncate">Aura Guide</span><span class="hidden sm:inline font-headline-sm text-headline-sm text-primary-container">•</span><span class="hidden sm:inline font-label-md text-label-md text-on-surface-variant truncate">Result</span></div><div class="flex items-center gap-1.5"><span aria-hidden="true" class="material-symbols-outlined text-primary-container text-[20px]">headphones</span><span aria-live="polite" class="font-label-sm text-label-sm text-primary-container">Headphones Active</span></div></div></div><div class="flex items-center gap-space-sm flex-shrink-0"><button aria-label="Speech speed settings and help guide" class="min-h-[64px] min-w-[64px] px-2 py-1 flex flex-col items-center justify-center bg-surface-container rounded-lg text-on-surface focus:outline-none focus:ring-4 focus:ring-primary-container focus:ring-offset-2 focus:ring-offset-surface active:bg-surface-container-high transition-colors" type="button"><span aria-hidden="true" class="material-symbols-outlined text-[28px] text-primary-container">speed</span><span class="font-label-sm text-label-sm text-on-surface mt-0.5">Speech</span></button><div aria-hidden="true" class="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="flex flex-col relative w-full px-margin pt-24 pb-28 bg-surface flex-grow"><div class="flex flex-col w-full pb-6 space-y-space-md">
+<!-- Visual/Tactile Recognition Announcement Banner -->
+<div aria-live="polite" class="w-full bg-surface-container-high rounded-xl p-space-sm flex items-center justify-between shadow-lg" role="status">
+<div class="flex items-center gap-space-xs min-w-0">
+<div aria-hidden="true" class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-on-primary-container text-[24px]">verified</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-sm text-label-sm text-primary-container tracking-wider uppercase">Match Confirmed</span>
+<span class="font-body-sm text-body-sm text-on-surface truncate">Recognized with 99% confidence</span>
+</div>
+</div>
+<span class="font-label-sm text-label-sm px-2.5 py-1 bg-surface-container rounded-lg text-secondary-fixed flex-shrink-0">Gallery 4 · No. 12</span>
+</div>
+<!-- Artwork Recognition Primary Card -->
+<section aria-label="Artwork Information" class="w-full bg-surface-container rounded-xl overflow-hidden shadow-xl">
+<div class="relative w-full h-52 bg-surface-container-low overflow-hidden">
+<img alt="High resolution photograph of The Starry Night painting by Vincent van Gogh" class="w-full h-full object-cover" data-alt="Vincent van Gogh's The Starry Night painted in thick, dramatic impasto oil brushstrokes. Swirling night sky in deep cobalt, ultramarine, and glowing golden yellow crescent moon, illuminating a tranquil village with a towering dark cypress silhouette." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAfZ0VUvUW5ynBb-VjZNr2aCpDUUF7AFZReU4u-hgPTQhnZI_v-VYqmBVSDCSn5b2nZF3BbCykgSs-kfHdnDvfwbW-61pQWt1oA_QUFXwclsv4gmRiT2ZyVo4H56Qj5vEeq9xzGYw0lek5OlCbNJC7Akvdk1TF5FoSs_6AhaAKWIKhE7GYWL-UJbPpLq5PQTb4hPUkiCMChvRzRLAYlDtdPjHU07dZ_jhFOkOSDOHM"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container via-surface-container/30 to-transparent"></div>
+<div class="absolute bottom-3 left-4 right-4 flex items-center justify-between">
+<span class="bg-surface/90 text-primary px-3 py-1 rounded-full font-label-sm text-label-sm shadow-md">Post-Impressionism</span>
+<span class="bg-surface/90 text-on-surface px-3 py-1 rounded-full font-label-sm text-label-sm shadow-md">Oil on Canvas</span>
+</div>
+</div>
+<div class="p-space-md space-y-space-xs">
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile text-primary font-bold leading-tight">
+        The Starry Night
+      </h1>
+<p class="font-headline-sm text-headline-sm text-on-surface-variant font-semibold">
+        Vincent van Gogh (1889)
+      </p>
+<p class="font-body-sm text-body-sm text-secondary pt-1">
+        Permanent Collection · The Museum of Modern Art
+      </p>
+</div>
+</section>
+<!-- Audio Player & Tactile Waveform Controller -->
+<section aria-label="Audio Description Player" class="w-full bg-surface-container-high rounded-xl p-space-md shadow-xl flex flex-col space-y-space-sm">
+<!-- Time & Speed Toggle Row -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span aria-hidden="true" class="material-symbols-outlined text-primary-container text-[26px]">graphic_eq</span>
+<span aria-label="Playback timestamp" class="font-headline-sm text-headline-sm text-primary font-bold" id="time-display">01:24 <span class="text-on-surface-variant font-normal">/ 03:40</span></span>
+</div>
+<button aria-label="Audio speed, current speed 1.0x. Tap to switch between 1.0x, 1.25x, and 1.5x" class="min-h-[48px] min-w-[72px] px-3 py-1 bg-surface-container rounded-lg text-primary-container font-label-md text-label-md flex items-center justify-center focus:outline-none shadow-md active:bg-surface-container-highest transition-colors" id="speed-toggle-btn" type="button">
+<span id="speed-label">1.0x</span>
+</button>
+</div>
+<!-- Tactile Visual Waveform Bar -->
+<div class="w-full space-y-2 py-1">
+<div aria-hidden="true" class="flex items-end justify-between gap-1 h-14 px-1" id="waveform-bars">
+<span class="w-1.5 h-6 bg-primary-container rounded-full"></span>
+<span class="w-1.5 h-10 bg-primary-container rounded-full"></span>
+<span class="w-1.5 h-12 bg-primary-container rounded-full"></span>
+<span class="w-1.5 h-8 bg-primary-container rounded-full"></span>
+<span class="w-1.5 h-14 bg-primary-container rounded-full"></span>
+<span class="w-1.5 h-11 bg-primary-container rounded-full"></span>
+<span class="w-1.5 h-9 bg-primary-container rounded-full"></span>
+<span class="w-1.5 h-13 bg-primary-container rounded-full"></span>
+<span class="w-1.5 h-7 bg-primary-container rounded-full"></span>
+<span class="w-1.5 h-12 bg-primary-container rounded-full"></span>
+<span class="w-1.5 h-10 bg-primary-container rounded-full"></span>
+<span class="w-1.5 h-6 bg-primary-container rounded-full"></span>
+<span class="w-1.5 h-5 bg-surface-container-highest rounded-full"></span>
+<span class="w-1.5 h-9 bg-surface-container-highest rounded-full"></span>
+<span class="w-1.5 h-12 bg-surface-container-highest rounded-full"></span>
+<span class="w-1.5 h-8 bg-surface-container-highest rounded-full"></span>
+<span class="w-1.5 h-11 bg-surface-container-highest rounded-full"></span>
+<span class="w-1.5 h-7 bg-surface-container-highest rounded-full"></span>
+<span class="w-1.5 h-4 bg-surface-container-highest rounded-full"></span>
+</div>
+<!-- Accessible Scrub Range Bar -->
+<div class="relative w-full h-3 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="absolute left-0 top-0 bottom-0 w-[38%] bg-primary-container rounded-full"></div>
+</div>
+</div>
+<!-- Playback Primary Actions Row -->
+<div class="flex items-center justify-between pt-1">
+<button aria-label="Skip backwards 10 seconds" class="min-h-[64px] min-w-[64px] rounded-full bg-surface-container text-on-surface flex items-center justify-center focus:outline-none active:bg-surface transition-colors shadow-md" id="scrub-back-btn" type="button">
+<span aria-hidden="true" class="material-symbols-outlined text-[32px]">replay_10</span>
+</button>
+<button aria-label="Pause narration" class="min-h-[72px] min-w-[72px] px-6 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center gap-2 focus:outline-none active:scale-95 shadow-xl transition-transform" id="play-pause-btn" type="button">
+<span class="material-symbols-outlined text-[36px]" id="play-pause-icon" style="font-variation-settings: 'FILL' 1;">pause</span>
+<span class="font-label-lg text-label-lg" id="play-pause-text">Pause</span>
+</button>
+<button aria-label="Skip forwards 10 seconds" class="min-h-[64px] min-w-[64px] rounded-full bg-surface-container text-on-surface flex items-center justify-center focus:outline-none active:bg-surface transition-colors shadow-md" id="scrub-fwd-btn" type="button">
+<span aria-hidden="true" class="material-symbols-outlined text-[32px]">forward_10</span>
+</button>
+</div>
+<!-- Vivid Audio Description Excerpt -->
+<div aria-label="Transcript preview" class="bg-surface-container p-space-sm rounded-xl space-y-1.5" role="region">
+<div class="flex items-center gap-1.5 text-primary-container">
+<span aria-hidden="true" class="material-symbols-outlined text-[20px]">volume_up</span>
+<span class="font-label-sm text-label-sm uppercase tracking-wide">Live Narration Excerpt</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface leading-relaxed italic">
+        "A swirling cobalt blue sky dominates the upper canvas, punctuated by eleven glowing celestial spheres in radiant golden yellow..."
+      </p>
+</div>
+</section>
+<!-- Secondary Actions: Exactly 3 Horizontal Touch Targets with Label UNDER Icon -->
+<section aria-label="Secondary Tour Options" class="w-full">
+<div class="grid grid-cols-3 gap-space-xs">
+<!-- Action 1: Rewind 15s -->
+<button aria-label="Rewind audio description 15 seconds" class="min-h-[88px] w-full bg-surface-container hover:bg-surface-container-high rounded-xl flex flex-col items-center justify-center p-2 text-on-surface focus:outline-none active:bg-surface-container-highest transition-colors shadow-md" id="rewind-btn" type="button">
+<span aria-hidden="true" class="material-symbols-outlined text-[32px] text-primary-container">replay</span>
+<span class="font-label-sm text-label-sm text-on-surface mt-1 text-center font-bold">Rewind 15s</span>
+</button>
+<!-- Action 2: Detailed Tactile Guide -->
+<button aria-label="Open detailed tactile and texture exploration guide" class="min-h-[88px] w-full bg-surface-container hover:bg-surface-container-high rounded-xl flex flex-col items-center justify-center p-2 text-on-surface focus:outline-none active:bg-surface-container-highest transition-colors shadow-md" id="tactile-btn" type="button">
+<span aria-hidden="true" class="material-symbols-outlined text-[32px] text-primary-container">touch_app</span>
+<span class="font-label-sm text-label-sm text-on-surface mt-1 text-center font-bold">Tactile Info</span>
+</button>
+<!-- Action 3: Save to Tour -->
+<button aria-label="Save this artwork to your tour history" aria-pressed="false" class="min-h-[88px] w-full bg-surface-container hover:bg-surface-container-high rounded-xl flex flex-col items-center justify-center p-2 text-on-surface focus:outline-none active:bg-surface-container-highest transition-colors shadow-md" id="save-tour-btn" type="button">
+<span aria-hidden="true" class="material-symbols-outlined text-[32px] text-primary-container" id="save-icon">bookmark</span>
+<span class="font-label-sm text-label-sm text-on-surface mt-1 text-center font-bold" id="save-text">Save Tour</span>
+</button>
+</div>
+</section>
+<!-- Interactive Feedback Pill for Tactile / Tour Save confirmation -->
+<div class="hidden w-full bg-surface-container-highest text-on-surface px-space-sm py-2 rounded-lg font-body-sm text-body-sm text-center" id="toast-announcement" role="alert">
+    Artwork saved to your private museum journal.
+  </div>
+<!-- HUGE PRIMARY VOICE ACTION: Fills Bottom Third of Experience -->
+<section aria-label="Interactive Voice Inquiry" class="w-full pt-space-xs">
+<button aria-label="Ask a question about this artwork. Tap once to begin speaking." class="w-full min-h-[160px] bg-primary-container hover:bg-primary-fixed-dim text-on-primary-container rounded-xl p-space-md flex flex-col items-center justify-center text-center shadow-2xl active:scale-[0.98] transition-transform focus:outline-none group cursor-pointer" id="ask-voice-btn" type="button">
+<div class="flex items-center justify-center gap-space-xs mb-2">
+<span aria-hidden="true" class="material-symbols-outlined text-[48px] text-on-primary-container" style="font-variation-settings: 'FILL' 1;">contact_support</span>
+<span aria-hidden="true" class="material-symbols-outlined text-[42px] text-on-primary-container animate-pulse">mic</span>
+</div>
+<span class="font-headline-md text-headline-md text-on-primary-container font-bold tracking-tight uppercase leading-snug">
+        Ask a Question About This Artwork
+      </span>
+<span class="font-label-md text-label-md text-on-primary-fixed-variant mt-1.5 flex items-center gap-1 font-semibold">
+<span>Tap to speak instantly</span>
+<span aria-hidden="true" class="material-symbols-outlined text-[20px]">arrow_forward</span>
+</span>
+</button>
+</section>
+</div>
+<script>
+  (function() {
+    // Play / Pause Micro-interaction
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    const playPauseIcon = document.getElementById('play-pause-icon');
+    const playPauseText = document.getElementById('play-pause-text');
+    let isPlaying = true;
+
+    if (playPauseBtn) {
+      playPauseBtn.addEventListener('click', function() {
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+          playPauseIcon.textContent = 'pause';
+          playPauseText.textContent = 'Pause';
+          playPauseBtn.setAttribute('aria-label', 'Pause narration');
+        } else {
+          playPauseIcon.textContent = 'play_arrow';
+          playPauseText.textContent = 'Play';
+          playPauseBtn.setAttribute('aria-label', 'Play narration');
+        }
+      });
+    }
+
+    // Playback Speed Toggle
+    const speedBtn = document.getElementById('speed-toggle-btn');
+    const speedLabel = document.getElementById('speed-label');
+    const speeds = ['1.0x', '1.25x', '1.5x'];
+    let speedIdx = 0;
+
+    if (speedBtn) {
+      speedBtn.addEventListener('click', function() {
+        speedIdx = (speedIdx + 1) % speeds.length;
+        const newSpeed = speeds[speedIdx];
+        speedLabel.textContent = newSpeed;
+        speedBtn.setAttribute('aria-label', 'Audio speed, current speed ' + newSpeed + '. Tap to change.');
+      });
+    }
+
+    // Save Tour Toggle & Toast feedback
+    const saveTourBtn = document.getElementById('save-tour-btn');
+    const saveIcon = document.getElementById('save-icon');
+    const saveText = document.getElementById('save-text');
+    const toast = document.getElementById('toast-announcement');
+    let isSaved = false;
+
+    if (saveTourBtn) {
+      saveTourBtn.addEventListener('click', function() {
+        isSaved = !isSaved;
+        if (isSaved) {
+          saveIcon.style.fontVariationSettings = "'FILL' 1";
+          saveText.textContent = 'Saved!';
+          saveTourBtn.setAttribute('aria-pressed', 'true');
+          if (toast) {
+            toast.textContent = 'Saved to your Tour History';
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+          }
+        } else {
+          saveIcon.style.fontVariationSettings = "'FILL' 0";
+          saveText.textContent = 'Save Tour';
+          saveTourBtn.setAttribute('aria-pressed', 'false');
+        }
+      });
+    }
+
+    // Tactile Info Dialog Trigger
+    const tactileBtn = document.getElementById('tactile-btn');
+    if (tactileBtn) {
+      tactileBtn.addEventListener('click', function() {
+        if (toast) {
+          toast.textContent = 'Tactile map mode ready on physical pad 4B.';
+          toast.classList.remove('hidden');
+          setTimeout(() => toast.classList.add('hidden'), 3500);
+        }
+      });
+    }
+
+    // Rewind 15s Action
+    const rewindBtn = document.getElementById('rewind-btn');
+    if (rewindBtn) {
+      rewindBtn.addEventListener('click', function() {
+        if (toast) {
+          toast.textContent = 'Rewound 15 seconds.';
+          toast.classList.remove('hidden');
+          setTimeout(() => toast.classList.add('hidden'), 2000);
+        }
+      });
+    }
+
+    // Voice Question Big Action
+    const askVoiceBtn = document.getElementById('ask-voice-btn');
+    if (askVoiceBtn) {
+      askVoiceBtn.addEventListener('click', function() {
+        const followupNav = document.querySelector('nav a[data-path="followup"]');
+        if (followupNav) {
+          followupNav.click();
+        } else if (toast) {
+          toast.textContent = 'Listening for your question about The Starry Night...';
+          toast.classList.remove('hidden');
+          setTimeout(() => toast.classList.add('hidden'), 4000);
+        }
+      });
+    }
+  })();
+</script></main><nav aria-label="Primary Museum Navigation" class="fixed bottom-0 inset-x-0 z-50 pb-safe bg-surface/95 backdrop-blur-xl shadow-[0_-4px_24px_rgba(0,0,0,0.9)]" data-active-classes="bg-surface-container-high text-primary-container font-bold"><div class="flex justify-around items-stretch h-24 px-space-xs"><a aria-label="Lens Camera Viewfinder" class="flex-1 flex flex-col items-center justify-center gap-1 min-h-[64px] text-on-surface-variant rounded-lg transition-all focus:outline-none focus:ring-4 focus:ring-primary-container" data-path="capture" href="#"><span aria-hidden="true" class="material-symbols-outlined text-[32px]">photo_camera</span><span class="font-label-md text-label-md">Capture</span></a><a aria-current="page" aria-label="Audio Description &amp; Artifact Details" class="flex-1 flex flex-col items-center justify-center gap-1 min-h-[64px] rounded-lg transition-all focus:outline-none focus:ring-4 focus:ring-primary-container bg-surface-container-high text-primary-container font-bold" data-path="result" href="#"><span aria-hidden="true" class="material-symbols-outlined text-[32px]">description</span><span class="font-label-md text-label-md">Result</span></a><a aria-label="Ask Questions &amp; Voice Dialogue" class="flex-1 flex flex-col items-center justify-center gap-1 min-h-[64px] text-on-surface-variant rounded-lg transition-all focus:outline-none focus:ring-4 focus:ring-primary-container" data-path="followup" href="#"><span aria-hidden="true" class="material-symbols-outlined text-[32px]">record_voice_over</span><span class="font-label-md text-label-md">Follow-up</span></a></div></nav></body></html>

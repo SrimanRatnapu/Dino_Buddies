@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Atkinson_Hyperlegible } from "next/font/google";
+import { Atkinson_Hyperlegible_Next } from "next/font/google";
 import "@/styles/globals.css";
 
-// Atkinson Hyperlegible was designed by the Braille Institute for low-vision readers.
-const font = Atkinson_Hyperlegible({ subsets: ["latin"], weight: ["400", "700"], display: "swap" });
+// Atkinson Hyperlegible Next (Braille Institute), as specified by the Stitch design system.
+const font = Atkinson_Hyperlegible_Next({ subsets: ["latin"], weight: ["400", "600", "700"], display: "swap" });
 
 export const metadata: Metadata = {
   title: "Wildlife Described",
