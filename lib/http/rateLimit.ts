@@ -13,7 +13,8 @@ const MAX_TRACKED = 5_000;
 
 const LIMITS = {
   describe: Number(process.env.RATE_LIMIT_DESCRIBE_PER_MIN ?? 30),
-  speak: Number(process.env.RATE_LIMIT_SPEAK_PER_MIN ?? 60),
+  // Every spoken line uses the AI voice, and the page prepares about 18 phrases on load.
+  speak: Number(process.env.RATE_LIMIT_SPEAK_PER_MIN ?? 180),
   // Guidance sends about one frame a second while aiming.
   aim: Number(process.env.RATE_LIMIT_AIM_PER_MIN ?? 120),
 } as const;

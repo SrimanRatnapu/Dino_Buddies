@@ -28,26 +28,43 @@ export const keyOf = (subject: string) => subject.trim().toLowerCase();
 export function readDetails(): Record<string, VisitRecord> {
   try {
     const v = JSON.parse(sessionStorage.getItem(KEY) ?? "{}");
-    return v && typeof v === "object" ? (v as Record<string, VisitRecord>) : {};
+    if (!v || typeof v !== "object") return {};
+    const out: Record<string, VisitRecord> = {};
+    for (const [k, r] of Object.entries(v as Record<string, VisitRecord>)) {
+      // Older saves kept the photo inline; newer ones keep it under its own key.
+      out[k] = { ...r, image: r.image ?? sessionStorage.getItem(PHOTO_KEY(k)) ?? undefined };
+    }
+    return out;
   } catch {
     return {};
   }
 }
 
-/** Saves the details; if storage is full, drops photos (oldest first) and tries again. */
+const PHOTO_KEY = (key: string) => `visitPhoto:${key}`;
+
+/**
+ * Saves the details. Photos are stored under their own keys and written only
+ * when they change, so an answer doesn't re-serialize every saved photo. If
+ * storage is full, the oldest photos are dropped (the text still works).
+ */
 export function writeDetails(details: Record<string, VisitRecord>): void {
-  const copy: Record<string, VisitRecord> = { ...details };
-  const oldestFirst = Object.values(copy)
-    .filter((r) => r.image)
-    .sort((a, b) => a.at - b.at);
-  for (;;) {
+  try {
+    const text: Record<string, VisitRecord> = {};
+    for (const [k, r] of Object.entries(details)) text[k] = { ...r, image: undefined };
+    sessionStorage.setItem(KEY, JSON.stringify(text));
+  } catch {
+    return; // storage unavailable: memory still works for this page
+  }
+  const oldestFirst = Object.entries(details).sort(([, a], [, b]) => a.at - b.at);
+  for (const [k, r] of oldestFirst) {
+    if (!r.image) continue;
     try {
-      sessionStorage.setItem(KEY, JSON.stringify(copy));
-      return;
+      if (sessionStorage.getItem(PHOTO_KEY(k)) === r.image) continue;
+      sessionStorage.setItem(PHOTO_KEY(k), r.image);
     } catch {
-      const r = oldestFirst.shift();
-      if (!r) return; // storage unavailable: memory still works for this page
-      copy[keyOf(r.subject)] = { ...r, image: undefined };
+      // Full: drop the oldest saved photo and give up on this one for now.
+      const oldest = oldestFirst.find(([ok]) => ok !== k && sessionStorage.getItem(PHOTO_KEY(ok)));
+      if (oldest) sessionStorage.removeItem(PHOTO_KEY(oldest[0]));
     }
   }
 }
@@ -55,6 +72,10 @@ export function writeDetails(details: Record<string, VisitRecord>): void {
 export function clearDetails(): void {
   try {
     sessionStorage.removeItem(KEY);
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i);
+      if (k?.startsWith("visitPhoto:")) sessionStorage.removeItem(k);
+    }
   } catch {
     /* storage unavailable */
   }

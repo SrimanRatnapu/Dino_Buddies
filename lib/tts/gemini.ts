@@ -40,7 +40,8 @@ let workingModel: string | null = null;
 function modelUnavailable(err: unknown): boolean {
   if (!(err instanceof ApiError)) return false;
   if (err.status === 404) return true;
-  return (err.status === 400 || err.status === 403) && /model|not (found|supported)|publisher/i.test(err.message);
+  // A 403 is a project permission problem: no other model will work either.
+  return err.status === 400 && /model .*(not found|not supported)|unsupported model|not supported for/i.test(err.message);
 }
 
 async function generate(model: string, text: string, signal?: AbortSignal) {

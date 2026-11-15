@@ -233,7 +233,8 @@ export default function App() {
     setVisited(visitedRef.current);
     // Get the AI voice ready for the fixed lines before the first tap, so the
     // greeting and cues already sound like the answers (saved between visits).
-    void prepareVoice([
+    // Not with App voice off: the screen reader speaks, so the clips would never play.
+    if (on) void prepareVoice([
       readPref("greeted") === "1" ? TOUR_START : FIRST_TOUR_START,
       WAIT_CUES.describe,
       "Hold still.",
@@ -1004,8 +1005,10 @@ export default function App() {
     listenRef.current?.abort(); // the spoken yes-or-no isn't needed now
     quiet();
     if (!yes) {
-      cue.cancel(); // no spoken reply: a running conversation is about to listen again
-      announce("Okay.");
+      cue.cancel();
+      // A running conversation listens again straight away; otherwise say so out loud.
+      if (voiceOnRef.current && !talkingRef.current) void say("Okay.");
+      else announce("Okay.");
       return;
     }
     void (async () => {

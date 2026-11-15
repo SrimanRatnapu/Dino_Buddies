@@ -14,7 +14,8 @@ const FIRST_PIECE_CHARS = 120;
 /** Short lines (cues, aiming instructions) wait less for the AI voice than long answers. */
 const SHORT_PHRASE_CHARS = 160;
 const SHORT_WAIT_MS = 4000;
-const CACHE_MAX = 120;
+/** Memory budget for fetched audio (answer pieces can be ~1 MB of WAV each). */
+const CACHE_MAX_BYTES = 20 * 1024 * 1024;
 /**
  * Saved AI audio (Cache Storage) survives reloads, so common phrases are ready
  * instantly on the next visit. Keys include the voice id from GET /api/speak,
@@ -30,6 +31,12 @@ const CLOUD_RETRY_MS = 120_000;
 /** Audio already fetched, by exact text: Repeat and common phrases play instantly. */
 const cache = new Map<string, Blob>();
 const inFlight = new Map<string, Promise<Blob | null>>();
+let cacheBytes = 0;
+/**
+ * Fixed phrases (from prepareVoice) are the only audio saved across visits:
+ * answers are one-off and would fill the phone's storage.
+ */
+const fixedTexts = new Set<string>();
 /** The server's voice id ("gemini:Kore"), or null when it has no AI voice. Undefined until asked. */
 let voiceId: string | null | undefined;
 let voiceIdPromise: Promise<string | null> | null = null;
@@ -58,6 +65,7 @@ function savedKey(id: string, text: string): string {
 }
 
 async function readSaved(text: string): Promise<Blob | null> {
+  if (!fixedTexts.has(text)) return null;
   try {
     const id = await getVoiceId();
     if (!id || typeof caches === "undefined") return null;
@@ -69,6 +77,7 @@ async function readSaved(text: string): Promise<Blob | null> {
 }
 
 async function writeSaved(text: string, blob: Blob): Promise<void> {
+  if (!fixedTexts.has(text)) return;
   try {
     const id = await getVoiceId();
     if (!id || typeof caches === "undefined") return;
@@ -79,8 +88,18 @@ async function writeSaved(text: string, blob: Blob): Promise<void> {
 }
 
 function remember(text: string, blob: Blob) {
+  const old = cache.get(text);
+  if (old) cacheBytes -= old.size;
+  cache.delete(text);
   cache.set(text, blob);
-  if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
+  cacheBytes += blob.size;
+  // Drop the oldest, but keep fixed phrases (small, and used all the time).
+  for (const [k, b] of cache) {
+    if (cacheBytes <= CACHE_MAX_BYTES) break;
+    if (fixedTexts.has(k) || k === text) continue;
+    cache.delete(k);
+    cacheBytes -= b.size;
+  }
 }
 
 /**
@@ -90,7 +109,9 @@ function remember(text: string, blob: Blob) {
 export async function prepareVoice(texts: string[]): Promise<void> {
   if (typeof window === "undefined") return;
   if (!(await getVoiceId())) return;
-  const queue = [...new Set(texts.flatMap((t) => pieces(t)))].filter((t) => !cache.has(t));
+  const all = [...new Set(texts.flatMap((t) => pieces(t)))];
+  all.forEach((t) => fixedTexts.add(t));
+  const queue = all.filter((t) => !cache.has(t));
   const worker = async () => {
     for (let t = queue.shift(); t !== undefined && cloudUsable(); t = queue.shift()) {
       await fetchAudio(t, LATER_PIECE_TIMEOUT_MS);
@@ -125,8 +146,19 @@ function silentWavUrl(): string {
  * Call from inside a user gesture (tap or key press). iOS only allows audio
  * and speech that were first started from a gesture.
  */
+let synthUnlocked = false;
+
 export function unlockSpeech(): void {
   if (typeof window === "undefined") return;
+  // iOS only lets speechSynthesis talk after it has spoken inside a tap. The
+  // phone-voice fallback now runs after waiting for the AI voice (outside the
+  // tap), so unlock it here with a silent utterance.
+  if (!synthUnlocked && window.speechSynthesis) {
+    synthUnlocked = true;
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0;
+    window.speechSynthesis.speak(u);
+  }
   if (!audio) {
     audio = new Audio();
     audio.setAttribute("playsinline", "");
