@@ -1,38 +1,51 @@
 "use client";
 
+// Voice-first app. The person talks to it; the screen is a large status display
+// and one big button. One tap starts a conversation: the app speaks, plays the
+// listening tone, hears the next request, acts on it, speaks the answer and
+// listens again, until the person says "pause" or stays silent twice.
+//
+// Every action below resolves only when its spoken reply has finished, so the
+// conversation loop knows when to reopen the microphone. The microphone is
+// never open while the app is speaking (it would hear itself); tapping the
+// screen interrupts instead.
+
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import type { DescribeRequest, DescribeSuccess } from "@/shared/contract";
-import type { AimMove } from "@/shared/contract";
+import type { AimMove, DescribeRequest, DescribeSuccess } from "@/shared/contract";
 import { guideToPhoto, instructionFor } from "./aimGuide";
 import { CameraError, cameraSupportError, captureOnce, fileToBase64 } from "./camera";
 import { cue, unlockCues } from "./cues";
 import { clientMockEnabled, describeImage } from "./describeClient";
-import { ListenError, listenErrorMessage, listenOnce, parseCommand, recognitionSupported } from "./listen";
+import {
+  HELP_TEXT,
+  ListenError,
+  listenErrorMessage,
+  listenOnce,
+  parseCommand,
+  recognitionSupported,
+  type VoiceCommand,
+} from "./listen";
 import { speak, stopSpeaking, unlockSpeech } from "./speech";
 import { spokenText, type ResultKind } from "./spokenText";
 
 export const APP_NAME = "Wildlife Described";
 
 /**
- * "capturing": the camera is on for about a second to take one photo.
- * "guiding": the camera is on and the app is telling the user how to aim.
+ * What the app is doing right now. "idle" means asleep: not listening, waiting
+ * for a tap. Speaking is tracked separately because it overlaps "idle".
  */
-type Phase = "idle" | "capturing" | "guiding" | "looking" | "listening" | "result" | "error";
-
-/** What the guiding screen shows: the latest instruction, in large text. */
-interface AimView {
-  text: string;
-  move: AimMove;
-  ready: boolean;
-}
-
-/** Don't repeat the same aiming instruction more often than this. */
-const REPEAT_INSTRUCTION_MS = 4000;
+type Phase = "idle" | "listening" | "capturing" | "guiding" | "looking";
 
 interface Shown {
   result: DescribeSuccess;
   kind: ResultKind;
   question?: string;
+}
+
+interface AimView {
+  text: string;
+  move: AimMove;
+  ready: boolean;
 }
 
 const WAIT_CUES: Record<ResultKind, string> = {
@@ -41,41 +54,54 @@ const WAIT_CUES: Record<ResultKind, string> = {
   answer: "Let me check.",
 };
 
-function readPref(key: string, fallback: boolean): boolean {
+const FIRST_GREETING =
+  "Hi, I'm Wildlife Described. Point your phone at an exhibit and say: what's this. Say help any time.";
+const GREETING = "I'm listening.";
+const ASLEEP_LINE = "I'll wait. Tap the screen when you need me.";
+
+/** Don't repeat the same aiming instruction more often than this. */
+const REPEAT_INSTRUCTION_MS = 4000;
+/** Silent turns in a row before the app stops listening by itself. */
+const MAX_SILENT_TURNS = 2;
+const RATES = [0.8, 0.9, 1, 1.15, 1.3];
+
+function readPref(key: string): string | null {
   try {
-    const v = localStorage.getItem(key);
-    return v === null ? fallback : v === "1";
+    return localStorage.getItem(key);
   } catch {
-    return fallback;
+    return null;
   }
 }
 
-function writePref(key: string, value: boolean) {
+function writePref(key: string, value: string) {
   try {
-    localStorage.setItem(key, value ? "1" : "0");
+    localStorage.setItem(key, value);
   } catch {
     /* storage unavailable */
   }
 }
 
+/** Result of one listening turn. */
+type Heard = { kind: "text"; text: string } | { kind: "silence" } | { kind: "stopped" } | { kind: "unavailable" };
+
 export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  const answerRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const questionRef = useRef<HTMLInputElement>(null);
 
   const [phase, setPhase] = useState<Phase>("idle");
+  const [talking, setTalking] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [heard, setHeard] = useState("");
   const [shown, setShown] = useState<Shown | null>(null);
   const [errorText, setErrorText] = useState("");
   const [status, setStatus] = useState("");
-  const [speaking, setSpeaking] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
   const [typing, setTyping] = useState(false);
   const [mock, setMock] = useState(false);
-  /** Set once the camera has failed; Describe then opens the photo picker instead. */
   const [cameraProblem, setCameraProblem] = useState<string | null>(null);
-  /** The photo being described, shown in place of a live feed. */
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [aimView, setAimView] = useState<AimView | null>(null);
 
@@ -83,7 +109,9 @@ export default function App() {
   const imageRef = useRef<string | null>(null);
   const baseRef = useRef<DescribeSuccess | null>(null);
   const shownRef = useRef<Shown | null>(null);
+  const errorTextRef = useRef("");
   const voiceOnRef = useRef(true);
+  const rateRef = useRef(1);
   const requestRef = useRef<AbortController | null>(null);
   const listenRef = useRef<AbortController | null>(null);
   const speakId = useRef(0);
@@ -92,23 +120,41 @@ export default function App() {
   const takeNowRef = useRef<AbortController | null>(null);
   const lastInstruction = useRef({ text: "", at: 0 });
   const cameraProblemRef = useRef<string | null>(null);
+  /** Bumped to end the running conversation loop. */
+  const loopRef = useRef(0);
+  const talkingRef = useRef(false);
+  const phaseRef = useRef<Phase>("idle");
+  const speakingRef = useRef(false);
+
+  function go(next: Phase) {
+    phaseRef.current = next;
+    setPhase(next);
+  }
 
   useEffect(() => {
-    const v = readPref("voiceOn", true);
-    setVoiceOn(v);
-    voiceOnRef.current = v;
+    const v = readPref("voiceOn");
+    const on = v === null ? true : v === "1";
+    setVoiceOn(on);
+    voiceOnRef.current = on;
+    const r = Number(readPref("rate"));
+    if (RATES.includes(r)) rateRef.current = r;
     setMock(clientMockEnabled());
+    if (!recognitionSupported()) setTyping(true);
     const unsupported = cameraSupportError();
     if (unsupported) {
       cameraProblemRef.current = unsupported.reason;
       setCameraProblem(unsupported.reason);
     }
-    // Never leave the camera on if the page goes away mid-capture.
+    // Never leave the camera or microphone on if the page goes away.
     return () => {
+      loopRef.current++;
       captureRef.current?.abort();
       guideRef.current?.abort();
+      listenRef.current?.abort();
     };
   }, []);
+
+  /* ---------------------------------------------------------------- speech */
 
   /** Polite screen-reader announcement; blanking first re-announces repeats. */
   function announce(text: string) {
@@ -116,24 +162,31 @@ export default function App() {
     window.setTimeout(() => setStatus(text), 60);
   }
 
-  /** Speak with the app's voice, or hand to the screen reader when app voice is off. */
+  /** Speak with the app's voice (resolves when done or interrupted), or hand to the screen reader. */
   async function say(text: string, opts: { cloud?: boolean } = {}) {
     if (!voiceOnRef.current) {
       announce(text);
       return;
     }
     const id = ++speakId.current;
+    speakingRef.current = true;
     setSpeaking(true);
     try {
-      await speak(text, { cloud: opts.cloud });
+      // Cloud voice has its own fixed rate, so a changed rate uses the phone's voice.
+      const rate = rateRef.current;
+      await speak(text, { cloud: opts.cloud && rate === 1, rate });
     } finally {
-      if (id === speakId.current) setSpeaking(false);
+      if (id === speakId.current) {
+        speakingRef.current = false;
+        setSpeaking(false);
+      }
     }
   }
 
   function quiet() {
     speakId.current++;
     stopSpeaking();
+    speakingRef.current = false;
     setSpeaking(false);
   }
 
@@ -143,13 +196,21 @@ export default function App() {
     unlockSpeech();
   }
 
+  function showError(msg: string) {
+    errorTextRef.current = msg;
+    setErrorText(msg);
+  }
+
+  /* ---------------------------------------------------------------- actions
+     Each resolves when its spoken reply has finished. */
+
   async function run(req: DescribeRequest, kind: ResultKind, question?: string, lead?: string) {
     requestRef.current?.abort();
     const ctrl = new AbortController();
     requestRef.current = ctrl;
-    setTyping(false);
-    setErrorText("");
-    setPhase("looking");
+    setTyping(!recognitionSupported());
+    showError("");
+    go("looking");
     void say(lead ? `${lead} ${WAIT_CUES[kind]}` : WAIT_CUES[kind]);
     const still = window.setTimeout(() => void say("Still looking."), 8000);
 
@@ -157,12 +218,12 @@ export default function App() {
     window.clearTimeout(still);
     if (ctrl.signal.aborted || requestRef.current !== ctrl) return;
     requestRef.current = null;
+    go("idle");
 
     if (!out.ok) {
       cue.error();
-      setErrorText(out.error.message);
-      setPhase("error");
-      void say(out.error.message);
+      showError(out.error.message);
+      await say(out.error.message);
       return;
     }
     cue.done();
@@ -170,8 +231,7 @@ export default function App() {
     const next: Shown = { result: out.data, kind, question };
     shownRef.current = next;
     setShown(next);
-    setPhase("result");
-    void say(spokenText(out.data, kind), { cloud: true });
+    await say(spokenText(out.data, kind), { cloud: true });
   }
 
   async function sendImage(image: string, lead?: string) {
@@ -179,104 +239,6 @@ export default function App() {
     setPhotoUrl(`data:image/jpeg;base64,${image}`);
     baseRef.current = null;
     await run({ image, mode: "default" }, "describe", undefined, lead);
-  }
-
-  /**
-   * Takes a photo and describes it. `fromTap` is false when called after an
-   * await (a voice command): browsers block opening the photo picker then.
-   */
-  function describe(fromTap = true) {
-    unlock();
-    quiet();
-    if (cameraProblemRef.current) {
-      if (fromTap) {
-        // Camera unusable: open the phone's camera app or photo picker instead.
-        fileRef.current?.click();
-      } else {
-        cue.error();
-        void say(`${cameraProblemRef.current} Tap Describe at the bottom of the screen to choose a photo.`);
-      }
-      return;
-    }
-    void (async () => {
-      const frame = await takePhoto();
-      if (frame) await sendImage(frame);
-    })();
-  }
-
-  /**
-   * "Guide me": keeps the camera on and speaks aiming instructions until the
-   * exhibit is fully in view, then takes one photo and describes it.
-   */
-  function guide(fromTap = true) {
-    unlock();
-    quiet();
-    if (cameraProblemRef.current || captureRef.current || guideRef.current) {
-      if (cameraProblemRef.current) describe(fromTap);
-      return;
-    }
-    const video = videoRef.current;
-    if (!video) return;
-    const stopCtrl = new AbortController();
-    const takeNow = new AbortController();
-    guideRef.current = stopCtrl;
-    takeNowRef.current = takeNow;
-    lastInstruction.current = { text: "", at: 0 };
-    setErrorText("");
-    setTyping(false);
-    setAimView({ text: "Hold the phone up in front of you.", move: "none", ready: false });
-    setPhase("guiding");
-    void say("Hold the phone up in front of you, and I'll help you aim.");
-
-    void (async () => {
-      try {
-        const result = await guideToPhoto(video, stopCtrl.signal, takeNow.signal, (aim, readyCount) => {
-          const text = instructionFor(aim, readyCount);
-          setAimView({ text, move: aim.move, ready: aim.status === "ready" });
-          const last = lastInstruction.current;
-          const now = Date.now();
-          if (text !== last.text || now - last.at > REPEAT_INSTRUCTION_MS) {
-            lastInstruction.current = { text, at: now };
-            cue.nudge();
-            void say(text);
-          }
-        });
-        if (!result || stopCtrl.signal.aborted) return;
-        // Camera is off now; guiding is over even while the description loads.
-        if (guideRef.current === stopCtrl) guideRef.current = null;
-        if (takeNowRef.current === takeNow) takeNowRef.current = null;
-        setAimView(null);
-        cue.capture();
-        const lead =
-          result.how === "timeout"
-            ? "I couldn't find a clear view, so I took the photo anyway."
-            : result.how === "unavailable"
-              ? "Aiming help isn't working right now, so I took the photo."
-              : undefined;
-        await sendImage(result.frame, lead);
-      } catch (err) {
-        if (stopCtrl.signal.aborted) return;
-        const reason = err instanceof CameraError ? err.reason : "The camera couldn't start.";
-        cameraProblemRef.current = reason;
-        setCameraProblem(reason);
-        cue.error();
-        const msg = `${reason} Tap Describe to choose a photo instead.`;
-        setErrorText(msg);
-        setPhase("error");
-        void say(msg);
-      } finally {
-        if (guideRef.current === stopCtrl) guideRef.current = null;
-        if (takeNowRef.current === takeNow) takeNowRef.current = null;
-        setAimView(null);
-      }
-    })();
-  }
-
-  /** While guiding: stop aiming and take the photo now. */
-  function takeNow() {
-    unlock();
-    quiet();
-    takeNowRef.current?.abort();
   }
 
   /**
@@ -288,9 +250,8 @@ export default function App() {
     if (!video || captureRef.current) return null;
     const ctrl = new AbortController();
     captureRef.current = ctrl;
-    setErrorText("");
-    setTyping(false);
-    setPhase("capturing");
+    showError("");
+    go("capturing");
     void say("Hold still.");
     try {
       const frame = await captureOnce(video, ctrl.signal);
@@ -299,64 +260,115 @@ export default function App() {
       return frame;
     } catch (err) {
       if (ctrl.signal.aborted) return null;
-      const reason = err instanceof CameraError ? err.reason : "The camera couldn't start.";
-      cameraProblemRef.current = reason;
-      setCameraProblem(reason);
-      cue.error();
-      const msg = `${reason} Tap Describe to choose a photo instead.`;
-      setErrorText(msg);
-      setPhase("error");
-      void say(msg);
+      await cameraFailed(err);
       return null;
     } finally {
       if (captureRef.current === ctrl) captureRef.current = null;
+      if (phaseRef.current === "capturing") go("idle");
     }
   }
 
-  async function onFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    unlock();
-    cue.capture();
+  async function cameraFailed(err: unknown) {
+    const reason = err instanceof CameraError ? err.reason : "The camera couldn't start.";
+    cameraProblemRef.current = reason;
+    setCameraProblem(reason);
+    go("idle");
+    cue.error();
+    const msg = `${reason} Tap Choose a photo to use a picture instead.`;
+    showError(msg);
+    await say(msg);
+  }
+
+  /** "What's this": one photo, then the description. */
+  async function describe(fromTap: boolean) {
+    if (cameraProblemRef.current) {
+      if (fromTap) fileRef.current?.click(); // the phone's camera app or photo picker
+      else {
+        cue.error();
+        await say(`${cameraProblemRef.current} Tap Choose a photo to use a picture instead.`);
+      }
+      return;
+    }
+    const frame = await takePhoto();
+    if (frame) await sendImage(frame);
+  }
+
+  /**
+   * "Help me aim": keeps the camera on and speaks aiming instructions until the
+   * exhibit is fully in view, then takes one photo and describes it.
+   */
+  async function guide(fromTap: boolean) {
+    if (cameraProblemRef.current) return describe(fromTap);
+    if (captureRef.current || guideRef.current) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const stopCtrl = new AbortController();
+    const takeNow = new AbortController();
+    guideRef.current = stopCtrl;
+    takeNowRef.current = takeNow;
+    lastInstruction.current = { text: "", at: 0 };
+    showError("");
+    setAimView({ text: "Hold the phone up in front of you.", move: "none", ready: false });
+    go("guiding");
+    void say("Hold the phone up in front of you, and I'll help you aim. Tap the screen to take the photo yourself.");
     try {
-      await sendImage(await fileToBase64(file));
-    } catch {
-      cue.error();
-      const msg = "I couldn't open that photo. Try a different one.";
-      setErrorText(msg);
-      setPhase("error");
-      void say(msg);
+      const result = await guideToPhoto(video, stopCtrl.signal, takeNow.signal, (aim, readyCount) => {
+        const text = instructionFor(aim, readyCount);
+        setAimView({ text, move: aim.move, ready: aim.status === "ready" });
+        const last = lastInstruction.current;
+        const now = Date.now();
+        if (text !== last.text || now - last.at > REPEAT_INSTRUCTION_MS) {
+          lastInstruction.current = { text, at: now };
+          cue.nudge();
+          void say(text);
+        }
+      });
+      if (!result || stopCtrl.signal.aborted) return;
+      // Camera is off now; guiding is over even while the description loads.
+      if (guideRef.current === stopCtrl) guideRef.current = null;
+      if (takeNowRef.current === takeNow) takeNowRef.current = null;
+      setAimView(null);
+      cue.capture();
+      const lead =
+        result.how === "timeout"
+          ? "I couldn't find a clear view, so I took the photo anyway."
+          : result.how === "unavailable"
+            ? "Aiming help isn't working right now, so I took the photo."
+            : undefined;
+      await sendImage(result.frame, lead);
+    } catch (err) {
+      if (stopCtrl.signal.aborted) return;
+      await cameraFailed(err);
+    } finally {
+      if (guideRef.current === stopCtrl) guideRef.current = null;
+      if (takeNowRef.current === takeNow) takeNowRef.current = null;
+      setAimView(null);
+      if (phaseRef.current === "guiding") go("idle");
     }
   }
 
-  function more() {
-    unlock();
+  async function more() {
     const image = imageRef.current;
     const base = baseRef.current;
-    if (!image || !base) return;
-    quiet();
-    void run(
-      { image, mode: "detailed", previous: { subject: base.subject, description: base.description } },
-      "more",
-    );
+    if (!image || !base) {
+      await say("There's nothing to add yet. Say what's this to describe something first.");
+      return;
+    }
+    await run({ image, mode: "detailed", previous: { subject: base.subject, description: base.description } }, "more");
   }
 
-  async function askQuestion(text: string, fromTap = true) {
+  async function askQuestion(text: string, fromTap: boolean) {
     let image = imageRef.current;
     const base = baseRef.current;
     if (!image) {
       // Asked before any photo: take one now and answer about it.
-      if (cameraProblemRef.current) {
-        describe(fromTap);
-        return;
-      }
+      if (cameraProblemRef.current) return describe(fromTap);
       image = await takePhoto();
       if (!image) return;
       imageRef.current = image;
       setPhotoUrl(`data:image/jpeg;base64,${image}`);
     }
-    void run(
+    await run(
       {
         image,
         mode: "default",
@@ -368,81 +380,213 @@ export default function App() {
     );
   }
 
-  function repeat() {
-    unlock();
+  async function repeat() {
     const s = shownRef.current;
-    if (s) void say(spokenText(s.result, s.kind), { cloud: true });
-    else if (errorText) void say(errorText);
+    if (s) await say(spokenText(s.result, s.kind), { cloud: true });
+    else if (errorTextRef.current) await say(errorTextRef.current);
+    else await say("I haven't said anything yet. Say what's this.");
   }
 
-  function stop() {
+  async function changeRate(dir: 1 | -1) {
+    const i = RATES.indexOf(rateRef.current);
+    const next = RATES[Math.max(0, Math.min(RATES.length - 1, (i < 0 ? 2 : i) + dir))];
+    const atLimit = next === rateRef.current;
+    rateRef.current = next;
+    writePref("rate", String(next));
+    await say(atLimit ? (dir > 0 ? "That's as fast as I go." : "That's as slow as I go.") : dir > 0 ? "Okay, faster." : "Okay, slower.");
+  }
+
+  /** Carries out one request, spoken or tapped. */
+  async function perform(cmd: VoiceCommand, fromTap: boolean) {
+    switch (cmd.kind) {
+      case "describe":
+        return describe(fromTap);
+      case "guide":
+        return guide(fromTap);
+      case "more":
+        return more();
+      case "repeat":
+        return repeat();
+      case "help":
+        return say(HELP_TEXT);
+      case "slower":
+        return changeRate(-1);
+      case "faster":
+        return changeRate(1);
+      case "stop":
+      case "pause":
+        return;
+      case "question":
+        return askQuestion(cmd.text, fromTap);
+    }
+  }
+
+  /* ---------------------------------------------------------------- the conversation */
+
+  async function hear(): Promise<Heard> {
+    const ctrl = new AbortController();
+    listenRef.current = ctrl;
+    go("listening");
+    cue.listen();
+    // Let the start tone finish so the microphone doesn't pick it up.
+    await new Promise((r) => setTimeout(r, 300));
+    if (ctrl.signal.aborted) return { kind: "stopped" };
+    try {
+      const text = await listenOnce(ctrl.signal);
+      return { kind: "text", text };
+    } catch (err) {
+      if (ctrl.signal.aborted || (err instanceof ListenError && err.code === "aborted")) return { kind: "stopped" };
+      if (err instanceof ListenError && err.code === "no-speech") return { kind: "silence" };
+      cue.error();
+      const msg = listenErrorMessage(err);
+      showError(msg);
+      if (msg.includes("type your question")) setTyping(true);
+      await say(msg);
+      return { kind: "unavailable" };
+    } finally {
+      if (listenRef.current === ctrl) listenRef.current = null;
+      if (phaseRef.current === "listening") go("idle");
+    }
+  }
+
+  function endConversation() {
+    loopRef.current++;
+    talkingRef.current = false;
+    setTalking(false);
+    listenRef.current?.abort();
+    listenRef.current = null;
+  }
+
+  /**
+   * The loop: listen, act, speak, listen again. With App voice off (a screen
+   * reader is talking) it runs one turn per tap, so it never records the
+   * screen reader's own speech.
+   */
+  async function converse(greeting?: string) {
+    if (!recognitionSupported()) {
+      setTyping(true);
+      await say(listenErrorMessage(new ListenError("unsupported")));
+      window.setTimeout(() => questionRef.current?.focus(), 0);
+      return;
+    }
+    const my = ++loopRef.current;
+    talkingRef.current = true;
+    setTalking(true);
+    if (greeting) await say(greeting);
+    let silent = 0;
+    while (loopRef.current === my) {
+      const h = await hear();
+      if (loopRef.current !== my) return;
+      if (h.kind === "stopped") break;
+      if (h.kind === "unavailable") break;
+      if (h.kind === "silence") {
+        silent++;
+        if (silent >= MAX_SILENT_TURNS || !voiceOnRef.current) {
+          await say(ASLEEP_LINE);
+          break;
+        }
+        await say("I'm still here. Say what's this, or help.");
+        continue;
+      }
+      silent = 0;
+      setHeard(h.text);
+      const cmd = parseCommand(h.text);
+      if (cmd.kind === "stop" || cmd.kind === "pause") {
+        cue.cancel();
+        await say("Okay. Tap the screen when you need me.");
+        break;
+      }
+      await perform(cmd, false);
+      if (!voiceOnRef.current) break;
+    }
+    if (loopRef.current === my) endConversation();
+  }
+
+  /** A button or shortcut: stop listening, do it, then carry on the conversation if one was running. */
+  async function act(cmd: VoiceCommand) {
+    unlock();
+    const busy = phaseRef.current === "capturing" || phaseRef.current === "guiding" || phaseRef.current === "looking";
+    if (busy) return;
+    const wasTalking = talkingRef.current;
+    endConversation();
     quiet();
-    cue.cancel();
+    setHeard("");
+    await perform(cmd, true);
+    if (wasTalking && voiceOnRef.current) void converse();
+  }
+
+  /** The one big button: what a tap means depends on what the app is doing. */
+  function onTalkButton() {
+    unlock();
+    const p = phaseRef.current;
+    if (p === "guiding") {
+      quiet();
+      takeNowRef.current?.abort();
+      return;
+    }
+    if (p === "capturing" || p === "looking") {
+      quiet(); // stop "still looking"; Cancel is the separate button
+      return;
+    }
+    if (p === "listening") {
+      endConversation();
+      quiet();
+      cue.cancel();
+      void say("Paused. Tap the screen to talk.");
+      return;
+    }
+    if (speakingRef.current) {
+      // Interrupt: stop talking. A running conversation listens next by itself.
+      quiet();
+      if (!talkingRef.current) void converse();
+      return;
+    }
+    quiet();
+    const first = readPref("greeted") !== "1";
+    writePref("greeted", "1");
+    void converse(first ? FIRST_GREETING : GREETING);
   }
 
   function cancel() {
     unlock();
+    endConversation();
     captureRef.current?.abort();
     captureRef.current = null;
     guideRef.current?.abort();
     guideRef.current = null;
     requestRef.current?.abort();
     requestRef.current = null;
-    listenRef.current?.abort();
-    listenRef.current = null;
     quiet();
     cue.cancel();
-    setTyping(false);
-    setPhase(shownRef.current ? "result" : "idle");
-    void say("Cancelled.");
+    go("idle");
+    void say("Cancelled. Tap the screen to talk.");
   }
 
-  async function listen() {
+  async function onFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
     unlock();
-    quiet();
-    if (!recognitionSupported()) {
-      setTyping(true);
-      void say(listenErrorMessage(new ListenError("unsupported")));
-      return;
-    }
-    const back: Phase = shownRef.current ? "result" : "idle";
-    const ctrl = new AbortController();
-    listenRef.current = ctrl;
-    setPhase("listening");
-    cue.listen();
-    // Let the start tone finish so the mic doesn't pick it up.
-    await new Promise((r) => setTimeout(r, 300));
-    if (ctrl.signal.aborted) return;
+    endConversation();
+    cue.capture();
     try {
-      const heard = await listenOnce(ctrl.signal);
-      if (listenRef.current !== ctrl) return;
-      listenRef.current = null;
-      const cmd = parseCommand(heard);
-      setPhase(back);
-      if (cmd.kind === "stop") stop();
-      else if (cmd.kind === "repeat") repeat();
-      else if (cmd.kind === "more" && baseRef.current) more();
-      else if (cmd.kind === "describe") describe(false);
-      else if (cmd.kind === "guide") guide(false);
-      else void askQuestion(cmd.kind === "question" ? cmd.text : heard, false);
-    } catch (err) {
-      if (listenRef.current !== ctrl) return;
-      listenRef.current = null;
-      setPhase(back);
+      await sendImage(await fileToBase64(file));
+    } catch {
       cue.error();
-      const msg = listenErrorMessage(err);
-      if (msg.includes("type your question")) setTyping(true);
-      void say(msg);
+      const msg = "I couldn't open that photo. Try a different one.";
+      showError(msg);
+      await say(msg);
     }
   }
 
   function onTypedQuestion(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    unlock();
-    const text = questionRef.current?.value.trim() ?? "";
-    if (!text) return;
-    quiet();
-    void askQuestion(text);
+    const input = questionRef.current;
+    const text = input?.value.trim() ?? "";
+    if (!text || !input) return;
+    input.value = "";
+    setHeard(text);
+    void act(parseCommand(text));
   }
 
   function toggleVoice() {
@@ -450,51 +594,57 @@ export default function App() {
     const next = !voiceOnRef.current;
     voiceOnRef.current = next;
     setVoiceOn(next);
-    writePref("voiceOn", next);
+    writePref("voiceOn", next ? "1" : "0");
     if (!next) {
+      endConversation();
       quiet();
-      announce("App voice off. Your screen reader will read results.");
+      announce("App voice off. Your screen reader reads each answer. Tap Talk for each question.");
     } else {
       void say("App voice on.");
     }
   }
 
-  // Move focus to new content so the next swipe or Tab starts there.
+  // With App voice off a screen reader is talking: move focus to each new answer
+  // or error after it renders, so the screen reader reads it next.
   useEffect(() => {
-    if (phase === "result") headingRef.current?.focus();
-    if (phase === "error") errorRef.current?.focus();
-    if (typing) questionRef.current?.focus();
-  }, [phase, shown, typing]);
+    if (!voiceOn && shown) answerRef.current?.focus();
+  }, [shown, voiceOn]);
+  useEffect(() => {
+    if (errorText && !voiceOn) errorRef.current?.focus();
+  }, [errorText, voiceOn]);
 
-  // Keyboard shortcuts for Bluetooth keyboards and switch devices. Escape works
-  // anywhere. Letter keys work only while focus is in the stage or the action
-  // buttons (WCAG 2.1.4: character-key shortcuts active only on focus), so they
-  // can't fire from a stray key press or from speech input elsewhere on the page.
-  const actions = useRef({ describe, guide, takeNow, more, listen, repeat, stop, cancel });
-  actions.current = { describe, guide, takeNow, more, listen, repeat, stop, cancel };
-  const phaseRef = useRef(phase);
-  phaseRef.current = phase;
+  // Keyboard: Space or Enter on the big button, Escape anywhere, and letter
+  // shortcuts while focus is inside the app (WCAG 2.1.4: only on focus).
+  function stopAll() {
+    endConversation();
+    quiet();
+    cue.cancel();
+  }
+  const handlers = useRef({ onTalkButton, cancel, act, stopAll });
+  handlers.current = { onTalkButton, cancel, act, stopAll };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select")) {
-        if (e.key === "Escape") actions.current.cancel();
+      const h = handlers.current;
+      const p = phaseRef.current;
+      const busy = p === "capturing" || p === "guiding" || p === "looking";
+      if (e.key === "Escape") {
+        // Escape only ever stops things: cancel a photo or lookup, pause listening, or stop speech.
+        if (busy) h.cancel();
+        else if (p === "listening" || speakingRef.current) h.stopAll();
+        e.preventDefault();
         return;
       }
-      const a = actions.current;
-      const busy = phaseRef.current !== "idle" && phaseRef.current !== "result" && phaseRef.current !== "error";
+      if (target?.closest("input, textarea, select") || !target?.closest("[data-shortcuts]")) return;
       const k = e.key.toLowerCase();
-      if (k === "escape") busy ? a.cancel() : a.stop();
-      else if (!target?.closest("[data-shortcuts]")) return;
-      else if (phaseRef.current === "guiding" && k === "t") a.takeNow();
+      if (p === "guiding" && k === "t") h.onTalkButton();
       else if (busy) return;
-      else if (k === "g") a.guide();
-      else if (k === "d") a.describe();
-      else if (k === "a") void a.listen();
-      else if (k === "r") a.repeat();
-      else if (k === "m") a.more();
-      else if (k === "s") a.stop();
+      else if (k === "d") void h.act({ kind: "describe" });
+      else if (k === "g") void h.act({ kind: "guide" });
+      else if (k === "m") void h.act({ kind: "more" });
+      else if (k === "r") void h.act({ kind: "repeat" });
+      else if (k === "a") h.onTalkButton();
       else return;
       e.preventDefault();
     };
@@ -502,11 +652,31 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const busy = phase === "capturing" || phase === "guiding" || phase === "looking" || phase === "listening";
+  /* ---------------------------------------------------------------- the screen */
+
+  const busy = phase === "capturing" || phase === "guiding" || phase === "looking";
   const r = shown?.result;
 
+  const state = speaking && phase === "idle" ? "speaking" : phase === "idle" && talking ? "listening" : phase;
+  // The button's spoken name starts with its visible word (WCAG 2.5.3, so voice control can say it),
+  // then says what a tap does now.
+  const STATUS: Record<string, { word: string; hint: string; tap: string }> = {
+    idle: { word: "Tap to talk", hint: "Then say “what's this”, “help me aim”, or ask a question.", tap: "" },
+    listening: { word: "Listening", hint: "Say “what's this”, ask a question, or say “pause”.", tap: "Tap to pause listening" },
+    speaking: { word: "Speaking", hint: "Tap anywhere to interrupt.", tap: "Tap to interrupt and talk" },
+    capturing: { word: "Hold still", hint: "Taking one photo.", tap: "" },
+    looking: { word: "Looking", hint: "Gemini is reading the photo.", tap: "" },
+    guiding: { word: aimView?.ready ? "Hold it there" : "Aiming", hint: "Tap anywhere to take the photo now.", tap: "Tap to take the photo now" },
+  };
+  const s = STATUS[state] ?? STATUS.idle;
+
   return (
-    <div className="app" data-phase={phase}>
+    <div
+      className="app"
+      data-state={state}
+      data-compact={heard || errorText || r || typing ? "" : undefined}
+      data-shortcuts
+    >
       <header className="topbar">
         <h1 className="brand">{APP_NAME}</h1>
         {mock && <span className="badge">Demo data</span>}
@@ -521,204 +691,143 @@ export default function App() {
         </button>
       </header>
 
-      <main className="stage" data-shortcuts>
-        {/* Live only while a photo is being taken; the camera is off otherwise. */}
+      <main className="stage">
+        {/* Live only while a photo is being taken or while aiming; off otherwise. */}
         <video
           ref={videoRef}
-          className="preview preview-live"
+          className="camera"
           data-live={phase === "capturing" || phase === "guiding"}
           muted
           playsInline
           aria-hidden="true"
         />
-        {photoUrl && phase !== "capturing" && phase !== "guiding" && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img className="preview" src={photoUrl} alt="" aria-hidden="true" />
-        )}
 
-        {phase === "idle" && (
-          <div className="hint">
-            {cameraProblem ? (
-              <p>{cameraProblem} Describe will open your camera app or photos.</p>
-            ) : (
-              <p>Point your phone at an exhibit or animal, then tap Describe. The camera turns on only to take the photo.</p>
-            )}
-          </div>
-        )}
-
-        {phase === "capturing" && (
-          <div className="hint" aria-hidden="true">
-            <p>Hold still…</p>
-          </div>
-        )}
-
-        {phase === "guiding" && aimView && (
-          // Spoken already; this is for low-vision users and companions.
-          <div className="aim" data-ready={aimView.ready} aria-hidden="true">
-            <AimArrow move={aimView.ready ? "none" : aimView.move} ready={aimView.ready} />
-            <p className="aim-text">{aimView.text}</p>
-          </div>
-        )}
-
-        {phase === "looking" && (
-          <div className="overlay" aria-hidden="true">
-            <div className="pulse" />
-            <p className="overlay-text">Looking…</p>
-          </div>
-        )}
-
-        {phase === "listening" && (
-          <div className="overlay" aria-hidden="true">
-            <div className="pulse pulse-mic">
+        <button
+          type="button"
+          className="talk"
+          onClick={onTalkButton}
+          aria-keyshortcuts="A"
+          aria-describedby="talk-hint"
+          aria-disabled={phase === "capturing" || phase === "looking" ? true : undefined}
+        >
+          <span className="orb" aria-hidden="true">
+            {state === "guiding" && aimView ? (
+              <AimArrow move={aimView.ready ? "none" : aimView.move} ready={aimView.ready} />
+            ) : state === "listening" ? (
               <MicIcon />
-            </div>
-            <p className="overlay-text">Listening…</p>
-            <p className="overlay-sub">Ask a question, or say “more” or “repeat”.</p>
-          </div>
-        )}
+            ) : state === "speaking" ? (
+              <WaveIcon />
+            ) : state === "capturing" || state === "looking" ? (
+              <EyeIcon />
+            ) : (
+              <MicIcon />
+            )}
+          </span>
+          <span className="talk-text">
+            <span className="status-word">
+              {s.word}
+              {s.tap && <span className="sr-only">. {s.tap}</span>}
+            </span>
+            {/* Read as the button's description (aria-describedby), not as part of its name. */}
+            <span className="status-hint" id="talk-hint" aria-hidden="true">
+              {state === "guiding" && aimView ? aimView.text : s.hint}
+            </span>
+          </span>
+        </button>
 
-        {phase === "result" && r && (
-          <section className="result" aria-labelledby="result-title">
-            {shown.question && <p className="asked">You asked: “{shown.question}”</p>}
-            <h2 id="result-title" ref={headingRef} tabIndex={-1}>
-              {r.subject}
-            </h2>
-            {r.confidence !== "high" && (
-              <p className="caveat">
-                <span className="label label-caution">Not certain</span>
-                {r.caveats || "This identification may be wrong."}
-              </p>
-            )}
-            <p className="desc">{r.description}</p>
-            {shown.kind === "describe" && r.size_comparison && (
-              <p className="fact">
-                <span className="label">Size</span>
-                {r.size_comparison}
-              </p>
-            )}
-            {shown.kind === "describe" && r.fun_fact && (
-              <p className="fact">
-                <span className="label">Fun fact</span>
-                {r.fun_fact}
-              </p>
-            )}
-          </section>
-        )}
+        <section className="conversation" aria-label="Conversation">
+          {heard && (
+            <p className="said">
+              <span className="who">You said</span> “{heard}”
+            </p>
+          )}
 
-        {phase === "error" && (
-          <div className="error">
-            <p ref={errorRef} tabIndex={-1} role={voiceOn ? undefined : "alert"}>
+          {errorText && (
+            <p className="error" ref={errorRef} tabIndex={-1} role={voiceOn ? undefined : "alert"}>
               {errorText}
             </p>
-          </div>
-        )}
+          )}
 
-        {typing && !busy && (
-          <form className="ask-form" onSubmit={onTypedQuestion}>
-            <label htmlFor="question">Type your question</label>
-            <div className="ask-row">
-              <input id="question" ref={questionRef} type="text" autoComplete="off" enterKeyHint="send" />
-              <button type="submit" className="btn btn-secondary">
-                Ask
-              </button>
-            </div>
-          </form>
-        )}
+          {r && !errorText && (
+            <article className="answer" aria-labelledby="answer-title">
+              {photoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className="thumb" src={photoUrl} alt="" aria-hidden="true" />
+              )}
+              <div className="answer-body">
+                <h2 id="answer-title" ref={answerRef} tabIndex={-1}>
+                  {r.subject}
+                </h2>
+                {r.confidence !== "high" && (
+                  <p className="caveat">
+                    <span className="label">Not certain</span> {r.caveats || "This identification may be wrong."}
+                  </p>
+                )}
+                <p className="desc">{r.description}</p>
+                {shown.kind === "describe" && r.size_comparison && (
+                  <p className="fact">
+                    <span className="label">Size</span> {r.size_comparison}
+                  </p>
+                )}
+                {shown.kind === "describe" && r.fun_fact && (
+                  <p className="fact">
+                    <span className="label">Fun fact</span> {r.fun_fact}
+                  </p>
+                )}
+              </div>
+            </article>
+          )}
+
+          {typing && !busy && (
+            <form className="ask" onSubmit={onTypedQuestion}>
+              <label htmlFor="question">Type instead of talking</label>
+              <div className="ask-row">
+                <input
+                  id="question"
+                  ref={questionRef}
+                  type="text"
+                  autoComplete="off"
+                  enterKeyHint="send"
+                  placeholder="what's this, or a question"
+                />
+                <button type="submit" className="btn">
+                  Send
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
       </main>
 
-      <nav className="controls" aria-label="Actions" data-shortcuts>
-        {phase === "result" && (
-          <div className="secondary-row">
-            {speaking ? (
-              <button type="button" className="btn btn-secondary" onClick={stop} aria-keyshortcuts="S">
-                <StopIcon />
-                Stop
-              </button>
-            ) : (
-              <button type="button" className="btn btn-secondary" onClick={repeat} aria-keyshortcuts="R">
-                <RepeatIcon />
-                Repeat
-              </button>
-            )}
-            <button type="button" className="btn btn-secondary" onClick={more} aria-keyshortcuts="M">
-              <PlusIcon />
-              Tell me more
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => void listen()} aria-keyshortcuts="A">
-              <MicIcon />
-              Ask
-            </button>
-          </div>
-        )}
-
-        {(phase === "idle" || phase === "error") && (
-          <div className="secondary-row">
-            <button type="button" className="btn btn-secondary" onClick={() => void listen()} aria-keyshortcuts="A">
-              <MicIcon />
-              Ask
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => guide()}
-              aria-keyshortcuts="G"
-              aria-describedby="guide-help"
-            >
-              <TargetIcon />
-              Guide me
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => {
-                unlock();
-                fileRef.current?.click();
-              }}
-            >
-              <PhotoIcon />
-              Use a photo
-            </button>
-          </div>
-        )}
-
-        {phase === "guiding" && (
-          <div className="secondary-row one">
-            <button type="button" className="btn btn-secondary" onClick={cancel} aria-keyshortcuts="Escape">
-              Cancel
-            </button>
-          </div>
-        )}
-
-        {phase === "guiding" ? (
-          <button type="button" className="btn btn-primary" onClick={takeNow} aria-keyshortcuts="T">
-            <CameraIcon />
-            Take it now
-          </button>
-        ) : busy ? (
-          <button type="button" className="btn btn-primary btn-cancel" onClick={cancel} aria-keyshortcuts="Escape">
+      <nav className="controls" aria-label="Without speaking">
+        {busy ? (
+          <button type="button" className="btn btn-wide" onClick={cancel} aria-keyshortcuts="Escape">
             Cancel
           </button>
         ) : (
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => describe()}
-            aria-keyshortcuts="D"
-            aria-describedby="describe-help"
-          >
-            <CameraIcon />
-            {phase === "result" ? "Describe new" : phase === "error" ? "Try again" : "Describe"}
-            <span className="btn-hint" aria-hidden="true">
-              Tap anywhere in this area
-            </span>
-          </button>
+          <>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void act({ kind: "describe" })}
+              aria-keyshortcuts="D"
+            >
+              <CameraIcon />
+              {cameraProblem ? "Choose a photo" : "What's this?"}
+            </button>
+            {r ? (
+              <button type="button" className="btn" onClick={() => void act({ kind: "more" })} aria-keyshortcuts="M">
+                <PlusIcon />
+                Tell me more
+              </button>
+            ) : (
+              <button type="button" className="btn" onClick={() => void act({ kind: "guide" })} aria-keyshortcuts="G">
+                <TargetIcon />
+                Help me aim
+              </button>
+            )}
+          </>
         )}
-        <p id="describe-help" className="sr-only">
-          Takes a photo of what your camera is pointing at and reads a description aloud.
-        </p>
-        <p id="guide-help" className="sr-only">
-          Hold the phone up. I'll tell you which way to turn until the exhibit is in view, then describe it.
-        </p>
       </nav>
 
       <input
@@ -738,6 +847,8 @@ export default function App() {
   );
 }
 
+/* ---------------------------------------------------------------- icons (decorative) */
+
 function Svg({ children }: { children: React.ReactNode }) {
   return (
     <svg className="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -753,51 +864,6 @@ function CameraIcon() {
     </Svg>
   );
 }
-function TargetIcon() {
-  return (
-    <Svg>
-      <circle cx="12" cy="12" r="8" />
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" />
-    </Svg>
-  );
-}
-
-/** Big direction arrow for the guiding screen (decorative; instructions are spoken). */
-function AimArrow({ move, ready }: { move: AimMove; ready: boolean }) {
-  if (ready) {
-    return (
-      <svg className="aim-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M5 12.5l4.5 4.5L19 7.5" />
-      </svg>
-    );
-  }
-  const rotate: Partial<Record<AimMove, number>> = { up: 0, right: 90, down: 180, left: 270 };
-  if (move in rotate) {
-    return (
-      <svg
-        className="aim-icon"
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-        focusable="false"
-        style={{ transform: `rotate(${rotate[move]}deg)` }}
-      >
-        <path d="M12 20V5M5.5 11.5L12 5l6.5 6.5" />
-      </svg>
-    );
-  }
-  if (move === "back" || move === "closer") {
-    // Arrows pointing outward (step back) or inward (move closer).
-    const d = move === "back" ? "M9 12H3M6 9l-3 3 3 3M15 12h6M18 9l3 3-3 3" : "M3 12h6M6 9l3 3-3 3M21 12h-6M18 9l-3 3 3 3";
-    return (
-      <svg className="aim-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d={d} />
-      </svg>
-    );
-  }
-  return <div className="pulse" />;
-}
-
 function MicIcon() {
   return (
     <Svg>
@@ -806,17 +872,18 @@ function MicIcon() {
     </Svg>
   );
 }
-function RepeatIcon() {
+function WaveIcon() {
   return (
     <Svg>
-      <path d="M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4" />
+      <path className="wave" d="M3 12h2M7 8v8M11 5v14M15 8v8M19 10v4M21 12h0" />
     </Svg>
   );
 }
-function StopIcon() {
+function EyeIcon() {
   return (
     <Svg>
-      <rect x="6" y="6" width="12" height="12" rx="1.5" />
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
     </Svg>
   );
 }
@@ -827,12 +894,46 @@ function PlusIcon() {
     </Svg>
   );
 }
-function PhotoIcon() {
+function TargetIcon() {
   return (
     <Svg>
-      <rect x="3.5" y="5" width="17" height="14" rx="2" />
-      <path d="m4 17 5-5 4 4 2-2 5 5" />
-      <circle cx="15.5" cy="9.5" r="1.5" />
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" />
     </Svg>
   );
+}
+
+/** Big direction arrow while aiming (decorative; every instruction is spoken). */
+function AimArrow({ move, ready }: { move: AimMove; ready: boolean }) {
+  if (ready) {
+    return (
+      <svg className="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M5 12.5l4.5 4.5L19 7.5" />
+      </svg>
+    );
+  }
+  const rotate: Partial<Record<AimMove, number>> = { up: 0, right: 90, down: 180, left: 270 };
+  if (move in rotate) {
+    return (
+      <svg
+        className="icon"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        focusable="false"
+        style={{ transform: `rotate(${rotate[move]}deg)` }}
+      >
+        <path d="M12 20V5M5.5 11.5L12 5l6.5 6.5" />
+      </svg>
+    );
+  }
+  if (move === "back" || move === "closer") {
+    const d = move === "back" ? "M9 12H3M6 9l-3 3 3 3M15 12h6M18 9l3 3-3 3" : "M3 12h6M6 9l3 3-3 3M21 12h-6M18 9l-3 3 3 3";
+    return (
+      <svg className="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d={d} />
+      </svg>
+    );
+  }
+  return <TargetIcon />;
 }

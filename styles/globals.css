@@ -1,27 +1,28 @@
-/* Wildlife Described: accessibility-first, high-contrast dark theme.
-   Tokens and rules are documented in DESIGN.md. */
+/* Wildlife Described: a voice-first app. People talk to it; the screen is a
+   large status display for low-vision users and companions, one huge talk
+   button, and two fallback buttons. Tokens are A's (DESIGN.md): black and
+   yellow at about 15:1, Atkinson Hyperlegible, 76px targets. */
 
 :root {
   --bg: #000000;
   --surface: #161616;
   --surface-2: #222222;
-  --line: #ffffff; /* Stitch: 2px white borders on secondary controls */
+  --line: #ffffff;
   --text: #ffffff;
   --text-muted: #d6d6d6; /* 14.4:1 on --bg */
   --accent: #ffd60a; /* 14.9:1 on --bg */
   --accent-ink: #000000;
   --caution: #ffb4a9; /* 12.4:1 on --bg */
-  --focus: #ffd60a; /* Stitch: 4px yellow ring with a black gap */
-  --info: #5ac8fa;
+  --focus: #ffd60a;
+  --info: #5ac8fa; /* 10.6:1 on --bg */
 
-  --radius-lg: 12px;
-  --radius-md: 8px; /* Stitch: soft corners, no pills */
-  --gap: 16px; /* Stitch: 16px minimum between targets */
-  --target: 76px; /* minimum tap target height */
+  --radius-lg: 16px;
+  --radius-md: 8px;
+  --gap: 16px;
+  --target: 76px;
 
   --fs-body: 1.375rem; /* 22px */
-  --fs-title: 2.25rem; /* 36px */
-  --fs-primary: 2.25rem;
+  --fs-status: 2.75rem; /* 44px */
   --fs-button: 1.25rem;
 
   color-scheme: dark;
@@ -68,16 +69,16 @@ body {
   box-shadow: 0 0 0 3px #000;
 }
 
-/* ---------- Layout: header, stage, controls (main action always at the bottom) ---------- */
+/* ---------- Shell: header, stage, fallback buttons ---------- */
 
 .app {
   display: flex;
   flex-direction: column;
   height: 100dvh;
-  padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
-  gap: var(--gap);
   max-width: 720px;
   margin: 0 auto;
+  padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  gap: var(--gap);
 }
 
 .topbar {
@@ -88,27 +89,26 @@ body {
 }
 
 .brand {
+  flex: 1;
+  margin: 0;
   font-size: 1.25rem;
   font-weight: 700;
-  margin: 0;
-  flex: 1;
-  letter-spacing: 0.01em;
 }
 
 .badge {
+  padding: 4px 10px;
+  border: 2px solid var(--info);
+  border-radius: 4px;
+  color: var(--info);
   font-size: 0.9rem;
   font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 4px;
-  border: 2px solid var(--info);
-  color: var(--info);
 }
 
 .toggle {
   min-height: 48px;
   padding: 0 16px;
-  border-radius: var(--radius-md);
   border: 2px solid var(--line);
+  border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -126,260 +126,326 @@ body {
   position: relative;
   flex: 1;
   min-height: 0;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--surface);
-  border: 2px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
 }
 
-.preview {
+/* ---------- The camera: only visible while it is on ---------- */
+
+.camera {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  background: var(--surface);
+  border-radius: var(--radius-lg);
+  opacity: 0;
+  pointer-events: none;
 }
 
-/* The video element is only live while a photo is being taken. */
-.preview-live:not([data-live="true"]) {
-  visibility: hidden;
+.camera[data-live="true"] {
+  opacity: 1;
 }
 
-.app[data-phase="result"] .preview,
-.app[data-phase="error"] .preview,
-.app[data-phase="looking"] .preview,
-.app[data-phase="listening"] .preview {
-  opacity: 0.25;
-}
+/* ---------- The talk button: most of the screen ---------- */
 
-.hint {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  padding: 14px 18px;
-  border-radius: var(--radius-md);
-  background: rgba(0, 0, 0, 0.82);
-  font-size: 1.125rem;
-}
-
-.hint p {
-  margin: 0;
-}
-
-/* ---------- Waiting states ---------- */
-
-.overlay {
-  position: absolute;
-  inset: 0;
+.talk {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 240px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  gap: 14px;
+  padding: 24px 16px;
+  border: 3px solid var(--surface-2);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
   text-align: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
-.overlay-text {
-  margin: 0;
-  font-size: var(--fs-title);
-  font-weight: 700;
+.app[data-state="listening"] .talk {
+  border-color: var(--accent);
 }
 
-.overlay-sub {
-  margin: 0;
-  color: var(--text-muted);
+/* over the live camera: see-through, the words on a dark band */
+.app[data-state="capturing"] .talk,
+.app[data-state="guiding"] .talk {
+  background: transparent;
+  border-color: var(--accent);
+  justify-content: flex-end;
 }
 
-.pulse {
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  border: 8px solid var(--accent);
+.app[data-state="capturing"] .status-word,
+.app[data-state="capturing"] .status-hint,
+.app[data-state="guiding"] .status-word,
+.app[data-state="guiding"] .status-hint {
+  padding: 4px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.82);
+}
+
+.orb {
+  width: 148px;
+  height: 148px;
+  flex: none;
   display: grid;
   place-items: center;
+  border: 5px solid var(--accent);
+  border-radius: 50%;
   color: var(--accent);
-  animation: pulse 1.4s ease-in-out infinite;
 }
 
-.pulse .icon {
-  width: 56px;
-  height: 56px;
+.orb .icon {
+  width: 64px;
+  height: 64px;
+  stroke-width: 2.2;
 }
 
-@keyframes pulse {
-  0%,
-  100% {
-    transform: scale(0.88);
-    opacity: 0.7;
-  }
-  50% {
-    transform: scale(1.04);
-    opacity: 1;
-  }
+.app[data-state="listening"] .orb {
+  background: var(--accent);
+  color: var(--accent-ink);
+  animation: breathe 1.6s ease-in-out infinite;
 }
 
-/* ---------- Guiding (live aiming help) ---------- */
-
-.aim {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 18px;
-  border-radius: var(--radius-md);
-  background: rgba(0, 0, 0, 0.85);
-  border: 3px solid var(--accent);
+.app[data-state="speaking"] .orb {
+  border-style: double;
+  border-width: 9px;
 }
 
-.aim[data-ready="true"] {
-  border-color: var(--info);
+.app[data-state="speaking"] .orb .wave {
+  animation: talk 0.9s ease-in-out infinite alternate;
+  transform-origin: center;
 }
 
-.aim-icon {
-  width: 72px;
-  height: 72px;
-  flex: none;
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.app[data-state="looking"] .orb {
+  border-style: dashed;
+  animation: spin 2.4s linear infinite;
+}
+
+.app[data-state="looking"] .orb .icon {
+  animation: spin 2.4s linear infinite reverse;
+}
+
+.app[data-state="guiding"] .orb,
+.app[data-state="capturing"] .orb {
+  background: rgba(0, 0, 0, 0.82);
+}
+
+.app[data-state="guiding"] .orb .icon {
+  width: 88px;
+  height: 88px;
   transition: transform 150ms ease;
 }
 
-.aim[data-ready="true"] .aim-icon {
-  stroke: var(--info);
+.talk-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
 }
 
-.aim .pulse {
-  width: 64px;
-  height: 64px;
-  border-width: 6px;
-  flex: none;
+.status-word {
+  font-size: var(--fs-status);
+  font-weight: 700;
+  line-height: 1.1;
 }
 
-.aim-text {
-  margin: 0;
+.status-hint {
+  max-width: 30ch;
+  color: var(--text-muted);
+  font-size: 1.25rem;
+  line-height: 1.4;
+}
+
+.app[data-state="guiding"] .status-hint {
+  color: var(--text);
   font-size: 1.625rem;
   font-weight: 700;
-  line-height: 1.25;
 }
 
-/* ---------- Result ---------- */
+@keyframes breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 214, 10, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 18px rgba(255, 214, 10, 0);
+  }
+}
 
-.result {
-  position: absolute;
-  inset: 0;
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes talk {
+  from {
+    transform: scaleY(0.55);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* Once a conversation is under way, the talk button becomes a bar and the answer gets the room.
+   While the camera is on it stays full size (the camera is behind it). */
+.app[data-compact]:not([data-state="capturing"]):not([data-state="guiding"]) .talk {
+  flex: 0 0 auto;
+  min-height: 112px;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 16px;
+  padding: 14px 16px;
+  text-align: left;
+}
+
+.app[data-compact]:not([data-state="capturing"]):not([data-state="guiding"]) .talk-text {
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.app[data-compact]:not([data-state="capturing"]):not([data-state="guiding"]) .orb {
+  width: 80px;
+  height: 80px;
+  border-width: 4px;
+}
+
+.app[data-compact]:not([data-state="capturing"]):not([data-state="guiding"]) .orb .icon {
+  width: 38px;
+  height: 38px;
+}
+
+.app[data-compact]:not([data-state="capturing"]):not([data-state="guiding"]) .status-word {
+  font-size: 2rem;
+}
+
+.app[data-compact]:not([data-state="capturing"]):not([data-state="guiding"]) .status-hint {
+  font-size: 1.0625rem;
+}
+
+.app[data-compact] .conversation {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
+/* ---------- The conversation: what was heard, and the answer ---------- */
+
+.conversation {
+  position: relative;
+  z-index: 1;
+  flex: 0 1 auto;
+  max-height: 56%;
   overflow-y: auto;
-  padding: 22px 20px 28px;
-  background: rgba(0, 0, 0, 0.9);
+  display: grid;
+  align-content: start;
+  gap: 12px;
 }
 
-.result h2 {
-  font-size: var(--fs-title);
-  line-height: 1.15;
-  margin: 0 0 14px;
-  color: var(--accent);
+.conversation:empty {
+  display: none;
 }
 
-.result h2:focus {
+.app[data-state="capturing"] .conversation,
+.app[data-state="guiding"] .conversation {
+  display: none;
+}
+
+.said {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.who {
+  display: block;
+  color: var(--info);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.answer {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 14px;
+  padding: 16px;
+  border: 2px solid var(--surface-2);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.answer:not(:has(.thumb)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+
+.answer-body {
+  display: grid;
+  gap: 10px;
+}
+
+.answer h2 {
+  margin: 0;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.answer h2:focus {
   outline: none;
 }
 
-.result h2:focus-visible {
+.answer h2:focus-visible {
   outline: 4px solid var(--focus);
+  outline-offset: 3px;
 }
 
-.asked {
-  margin: 0 0 8px;
-  color: var(--text-muted);
-  font-size: 1.125rem;
-}
-
-.desc {
-  margin: 0 0 18px;
-}
-
+.desc,
+.fact,
 .caveat {
-  margin: 0 0 16px;
-  padding: 12px 14px;
-  border: 2px solid var(--caution);
-  border-left-width: 8px;
-  background: var(--surface-2);
-  border-radius: var(--radius-md);
-  color: var(--caution);
-}
-
-.fact {
-  margin: 0 0 14px;
-  padding: 14px 16px;
-  border-radius: var(--radius-md);
-  background: var(--surface-2);
-  border: 2px solid #3a3a3a;
+  margin: 0;
 }
 
 .label {
   display: block;
-  font-size: 0.95rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   color: var(--accent);
-  margin-bottom: 2px;
+  font-size: 1rem;
+  font-weight: 700;
 }
 
-.label-caution {
+.caveat .label {
   color: var(--caution);
 }
-
-/* ---------- Error ---------- */
 
 .error {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.85);
-}
-
-.error p {
   margin: 0;
-  max-width: 22ch;
-  text-align: center;
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: var(--caution);
-}
-
-.error p:focus {
-  outline: none;
-}
-
-/* ---------- Typed question fallback ---------- */
-
-.ask-form {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
   padding: 16px;
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  border: 2px solid var(--accent);
+  border: 3px solid var(--caution);
+  border-radius: var(--radius-lg);
+  color: var(--caution);
+  font-weight: 700;
 }
 
-.ask-form label {
-  display: block;
+.ask {
+  display: grid;
+  gap: 8px;
+}
+
+.ask label {
+  font-size: 1rem;
   font-weight: 700;
-  margin-bottom: 8px;
 }
 
 .ask-row {
@@ -387,123 +453,63 @@ body {
   gap: 10px;
 }
 
-.ask-row input {
+.ask input {
   flex: 1;
   min-width: 0;
   min-height: 60px;
-  padding: 0 14px;
-  border-radius: 4px;
+  padding: 0 16px;
   border: 2px solid var(--line);
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text);
   font: inherit;
 }
 
-.ask-row input:focus {
-  outline: none;
-  border: 4px solid var(--accent);
+.ask input::placeholder {
+  color: #a8a8a8; /* 8.4:1 on black */
 }
 
-.ask-row .btn {
-  min-height: 60px;
-  padding: 0 20px;
-}
-
-/* ---------- Controls ---------- */
+/* ---------- Fallback buttons: for people who'd rather not speak ---------- */
 
 .controls {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-}
-
-.secondary-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr 1fr;
   gap: var(--gap);
-}
-
-.secondary-row.two {
-  grid-template-columns: repeat(2, 1fr);
-}
-
-.secondary-row.one {
-  grid-template-columns: 1fr;
 }
 
 .btn {
+  min-height: var(--target);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  border: 3px solid transparent; /* visible in forced-colors mode */
+  padding: 0 14px;
+  border: 2px solid var(--line);
   border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
   font: inherit;
+  font-size: var(--fs-button);
   font-weight: 700;
   cursor: pointer;
   touch-action: manipulation;
-  user-select: none;
-  transition: transform 80ms ease;
 }
 
 .btn:active {
-  transform: scale(0.97);
+  background: var(--surface-2);
 }
 
-.btn-secondary {
-  min-height: var(--target);
-  padding: 8px;
-  flex-direction: column;
-  gap: 4px;
-  font-size: var(--fs-button);
-  line-height: 1.1;
-  background: var(--surface);
-  color: var(--text);
-  border: 2px solid var(--line);
+.ask .btn {
+  min-height: 60px;
 }
 
-.btn-secondary .icon {
+.btn-wide {
+  grid-column: 1 / -1;
+}
+
+.btn .icon {
   width: 28px;
   height: 28px;
-}
-
-.btn-primary {
-  min-height: 30vh;
-  font-size: var(--fs-primary);
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-radius: var(--radius-lg);
-  flex-direction: column;
-}
-
-.btn-primary .icon {
-  width: 64px;
-  height: 64px;
-}
-
-.btn-hint {
-  font-size: 1.125rem;
-  font-weight: 600;
-}
-
-.app[data-phase="result"] .btn-hint {
-  display: none;
-}
-
-.app[data-phase="result"] .btn-primary {
-  min-height: 18vh;
-  flex-direction: row;
-}
-
-.app[data-phase="result"] .btn-primary .icon {
-  width: 44px;
-  height: 44px;
-}
-
-.btn-cancel {
-  background: var(--surface);
-  color: var(--text);
-  border-color: var(--text);
 }
 
 .icon {
@@ -515,24 +521,30 @@ body {
   flex: none;
 }
 
-/* Short screens (landscape phones): keep everything reachable. */
-@media (max-height: 560px) {
-  .btn-primary {
-    min-height: 120px;
+/* Short screens (landscape phones): smaller orb, everything reachable. */
+@media (max-height: 600px) {
+  .talk {
+    min-height: 160px;
+    gap: 8px;
   }
-  .app[data-phase="result"] .btn-primary {
-    min-height: 88px;
+  .orb {
+    width: 96px;
+    height: 96px;
+  }
+  .orb .icon {
+    width: 44px;
+    height: 44px;
+  }
+  .status-word {
+    font-size: 2rem;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pulse {
+  .app[data-state] .orb,
+  .app[data-state] .orb .icon,
+  .app[data-state] .orb .wave {
     animation: none;
-  }
-  .aim-icon {
-    transition: none;
-  }
-  .btn {
     transition: none;
   }
 }
@@ -540,8 +552,9 @@ body {
 @media (forced-colors: active) {
   .btn,
   .toggle,
-  .fact,
-  .caveat {
+  .talk,
+  .answer,
+  .orb {
     border: 3px solid ButtonText;
   }
 }

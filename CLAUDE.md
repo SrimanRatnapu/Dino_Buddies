@@ -167,6 +167,11 @@ Times are relative to kickoff. Replace with real clock times once demos are sche
   - Gemini client, thinking settings and error mapping moved to `lib/gemini/client.ts`, shared by describe and aim. Image validation is `parseImage()` in `lib/gemini/validate.ts`.
   - `/api/describe` and `/api/speak` are unchanged.
 
+- **2026-11-15, B (Sriman, as design lead, asked for a voice-first app): no API or contract change, still v1.1.** A, this touched your files:
+  - The tasteskill landing page is reverted (back to the UI after Guide me), then the app is redesigned around talking: one tap starts a conversation that listens, acts, speaks and listens again until the person says "pause" or is silent twice. A tap interrupts speech, pauses listening, or takes the photo while aiming.
+  - New voice commands in `components/listen.ts`: help, pause or goodbye, slower and faster, and more ways to say "what's this". With App voice off (a screen reader is talking) it runs one turn per tap and never auto-listens.
+  - `components/App.tsx` and `styles/globals.css` rewritten on your tokens (black and yellow, Atkinson Hyperlegible, 76px targets). Every earlier behaviour is kept: camera on only for the photo, Guide me, photo-picker fallback, typed fallback, shortcuts. `DEMO.md` steps 3 to 6 now follow the spoken flow.
+
 ## Backup ideas (only if this stalls)
 - Wildlife Rehab Triage: identify an injured animal, give "intervene or leave it" guidance, and look up the nearest rehabber with Maps.
 - FossilID: Gemini vision identification of possible fossil finds with a "report it, don't dig it" flow.

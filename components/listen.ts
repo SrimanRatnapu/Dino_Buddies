@@ -1,5 +1,6 @@
-// One-shot voice input with the browser's SpeechRecognition (Chrome, Edge,
-// Safari). Where it is missing, the UI falls back to a typed question.
+// Voice input with the browser's SpeechRecognition (Chrome, Edge, Safari).
+// The app runs it as a conversation: one listenOnce() per turn, reopened after
+// each spoken reply. Where it is missing, the UI falls back to a typed question.
 
 interface RecognitionLike {
   lang: string;
@@ -36,7 +37,7 @@ export function listenErrorMessage(err: unknown): string {
   const code = err instanceof ListenError ? err.code : "failed";
   switch (code) {
     case "no-speech":
-      return "I didn't hear anything. Tap Ask and try again.";
+      return "I didn't hear anything. Tap the screen and try again.";
     case "not-allowed":
       return "I can't use the microphone. Allow microphone access, or type your question.";
     case "unsupported":
@@ -44,11 +45,11 @@ export function listenErrorMessage(err: unknown): string {
     case "aborted":
       return "Stopped listening.";
     default:
-      return "I didn't catch that. Tap Ask and try again.";
+      return "I didn't catch that. Tap the screen and try again.";
   }
 }
 
-export function listenOnce(signal?: AbortSignal, timeoutMs = 9000): Promise<string> {
+export function listenOnce(signal?: AbortSignal, timeoutMs = 8000): Promise<string> {
   const Ctor = ctor();
   if (!Ctor) return Promise.reject(new ListenError("unsupported"));
   return new Promise<string>((resolve, reject) => {
@@ -103,18 +104,43 @@ export type VoiceCommand =
   | { kind: "more" }
   | { kind: "repeat" }
   | { kind: "stop" }
+  | { kind: "pause" }
+  | { kind: "help" }
+  | { kind: "slower" }
+  | { kind: "faster" }
   | { kind: "guide" }
   | { kind: "question"; text: string };
 
+/** What the app says when asked for help. Short enough to remember. */
+export const HELP_TEXT =
+  "Point your phone at an exhibit and say: what's this. " +
+  "Say help me aim, and I'll tell you which way to turn first. " +
+  "After a description, ask any question, or say tell me more, or repeat. " +
+  "Say slower or faster to change my voice. Say pause when you're done, and tap the screen to wake me.";
+
 /** Maps what was heard to a command. Anything unrecognized is a follow-up question. */
 export function parseCommand(heard: string): VoiceCommand {
-  const t = heard.toLowerCase().replace(/[.!?,]/g, "").trim();
-  if (/^(stop|quiet|be quiet|cancel|stop talking)$/.test(t)) return { kind: "stop" };
-  if (/^(repeat|again|repeat that|say (that|it) again|what did you say)$/.test(t)) return { kind: "repeat" };
-  if (/^(more|tell me more|more details?|go on|keep going)$/.test(t)) return { kind: "more" };
-  if (/^(guide me|guide|help me aim|aim|help me point|where should i point)$/.test(t)) return { kind: "guide" };
+  const t = heard
+    .toLowerCase()
+    .replace(/[.!?,]/g, "")
+    .replace(/^(please|okay|ok|hey|um|uh)\s+/, "")
+    .replace(/\s+please$/, "")
+    .trim();
+  if (/^(stop|quiet|be quiet|cancel|stop talking|shh|hush)$/.test(t)) return { kind: "stop" };
   if (
-    /^(describe|describe this|describe it|look|what is this|whats this|what's this|what is that|what am i looking at|new photo|take a (photo|picture))$/.test(
+    /^(pause|goodbye|bye|bye bye|stop listening|that's all|thats all|that is all|thanks|thank you|go to sleep|sleep|never mind|nevermind|i'm done|im done)$/.test(
+      t,
+    )
+  )
+    return { kind: "pause" };
+  if (/^(help|what can i say|what can you do|commands|how does this work|options)$/.test(t)) return { kind: "help" };
+  if (/^((talk|speak|go) )?(slower|more slowly|slow down)$/.test(t)) return { kind: "slower" };
+  if (/^((talk|speak|go) )?(faster|quicker|more quickly|speed up)$/.test(t)) return { kind: "faster" };
+  if (/^(repeat|again|repeat that|say (that|it) again|what did you say|pardon|sorry)$/.test(t)) return { kind: "repeat" };
+  if (/^(more|tell me more|more details?|go on|keep going|and|what else)$/.test(t)) return { kind: "more" };
+  if (/^(guide me|guide|help me aim|aim|help me point|where should i point|help me find it)$/.test(t)) return { kind: "guide" };
+  if (
+    /^(describe|describe (this|it|that)|look|look at (this|that)|what is (this|that|it)|whats (this|that)|what's (this|that)|what am i looking at|what do you see|what can you see|what's in front of me|whats in front of me|what is in front of me|new photo|take a (photo|picture)|take another( one)?|another one|next|next one)$/.test(
       t,
     )
   )
