@@ -26,7 +26,7 @@ import {
   recognitionSupported,
   type VoiceCommand,
 } from "./listen";
-import { prepareVoice, speak, stopSpeaking, unlockSpeech } from "./speech";
+import { logSound, onSoundLog, prepareVoice, speak, stopSpeaking, testVoices, unlockSpeech } from "./speech";
 import { spokenText, type ResultKind } from "./spokenText";
 import {
   addSaid,
@@ -171,6 +171,9 @@ export default function App() {
   const [voiceOn, setVoiceOn] = useState(true);
   const [typing, setTyping] = useState(false);
   const [mock, setMock] = useState(false);
+  /** ?debug=1: a panel showing what happened to each spoken line, with a sound test. */
+  const [debug, setDebug] = useState(false);
+  const [soundLines, setSoundLines] = useState<string[]>([]);
   const [cameraProblem, setCameraProblem] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [aimView, setAimView] = useState<AimView | null>(null);
@@ -227,6 +230,7 @@ export default function App() {
     const r = Number(readPref("rate"));
     if (RATES.includes(r)) rateRef.current = r;
     setMock(clientMockEnabled());
+    setDebug(new URLSearchParams(window.location.search).get("debug") === "1");
     visitedRef.current = readVisited();
     detailsRef.current = readDetails();
     setDetails(detailsRef.current);
@@ -985,6 +989,8 @@ export default function App() {
     }
   }
 
+  useEffect(() => (debug ? onSoundLog(setSoundLines) : undefined), [debug]);
+
   // With App voice off a screen reader is talking: move focus to each new answer
   // or error after it renders, so the screen reader reads it next.
   useEffect(() => {
@@ -1316,6 +1322,28 @@ export default function App() {
         aria-hidden="true"
         onChange={onFile}
       />
+      {debug && (
+        <section className="sound-debug" aria-label="Sound check">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              unlock();
+              cue.done();
+              logSound("test 0: chime (Web Audio)");
+              void testVoices();
+            }}
+          >
+            Test sound
+          </button>
+          <ol>
+            {soundLines.map((l, i) => (
+              <li key={i}>{l}</li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       <p className="sr-only" role="status" aria-live="polite">
         {status}
       </p>

@@ -23,7 +23,27 @@ const CACHE_MAX_BYTES = 20 * 1024 * 1024;
  */
 const SAVED_CACHE = "wd-voice-v1";
 
+/* ---------------------------------------------------------------- sound log
+   What happened to each line, for the ?debug=1 panel (no other effect). */
+const LOG_MAX = 40;
+const soundLog: string[] = [];
+const logListeners = new Set<(lines: string[]) => void>();
+export function logSound(msg: string): void {
+  const t = new Date().toTimeString().slice(0, 8);
+  soundLog.push(`${t} ${msg}`);
+  if (soundLog.length > LOG_MAX) soundLog.shift();
+  logListeners.forEach((f) => f([...soundLog]));
+}
+export function onSoundLog(f: (lines: string[]) => void): () => void {
+  logListeners.add(f);
+  f([...soundLog]);
+  return () => logListeners.delete(f);
+}
+const short = (s: string) => (s.length > 40 ? `${s.slice(0, 40)}…` : s);
+
 let token = 0;
+/** iOS and Chrome can drop an utterance that nothing holds a reference to. */
+let currentUtterance: SpeechSynthesisUtterance | null = null;
 let audio: HTMLAudioElement | null = null;
 /** The AI voice is skipped until this time (ms since epoch). Infinity = for the session. */
 let cloudOffUntil = 0;
@@ -47,6 +67,7 @@ function getVoiceId(): Promise<string | null> {
     .then((r) => (r.ok ? r.json() : { voice: null }))
     .then((j: { voice?: string | null }) => {
       voiceId = typeof j?.voice === "string" ? j.voice : null;
+      logSound(voiceId ? `server voice: ${voiceId}` : "server has no AI voice: using the phone voice");
       if (!voiceId) cloudOffUntil = Infinity; // no AI voice configured: don't wait for one
       return voiceId;
     })
@@ -153,8 +174,19 @@ export function unlockSpeech(): void {
   // iOS only lets speechSynthesis talk after it has spoken inside a tap. The
   // phone-voice fallback now runs after waiting for the AI voice (outside the
   // tap), so unlock it here with a silent utterance.
+  // Safari 17+: play sound even when the iPhone's silent switch is on.
+  const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+  if (session && session.type !== "playback") {
+    try {
+      session.type = "playback";
+      logSound("audio session set to playback (plays in silent mode)");
+    } catch {
+      /* not allowed here */
+    }
+  }
   if (!synthUnlocked && window.speechSynthesis) {
     synthUnlocked = true;
+    logSound(`unlocked phone voice; ${window.speechSynthesis.getVoices().length} voices available`);
     const u = new SpeechSynthesisUtterance(" ");
     u.volume = 0;
     window.speechSynthesis.speak(u);
@@ -170,7 +202,10 @@ export function unlockSpeech(): void {
 export function stopSpeaking(): void {
   token++;
   if (typeof window === "undefined") return;
-  window.speechSynthesis?.cancel();
+  const synth = window.speechSynthesis;
+  // iOS: cancel() right before speak() can swallow the new line, so only cancel when needed.
+  // (The silent unlock utterance is left alone: cancelling it is what triggers the bug.)
+  if (synth && currentUtterance && (synth.speaking || synth.pending)) synth.cancel();
   if (audio && !audio.paused) audio.pause();
 }
 
@@ -182,6 +217,23 @@ export interface SpeakOptions {
 
 const cloudUsable = () => Date.now() >= cloudOffUntil;
 
+/** For the ?debug=1 panel: the phone voice, then the AI voice, one after the other. */
+export async function testVoices(): Promise<void> {
+  stopSpeaking();
+  const my = token;
+  logSound("test 1: phone voice");
+  await speakBrowser("This is the phone voice.", my, 1);
+  if (my !== token) return;
+  logSound("test 2: AI voice");
+  const id = await getVoiceId();
+  if (!id) return logSound("no AI voice on the server, skipped");
+  const blob = await fetchAudio("This is the AI voice.", LATER_PIECE_TIMEOUT_MS);
+  if (!blob) return logSound("AI voice: no audio came back");
+  logSound(`AI voice: got ${Math.round(blob.size / 1024)} KB of ${blob.type || "audio"}, playing`);
+  const ok = await playBlob(blob, my, 1);
+  logSound(ok ? "AI voice test finished" : "AI voice test failed to play");
+}
+
 /** Speak text, interrupting anything already playing. Resolves when done or stopped. */
 export async function speak(text: string, opts: SpeakOptions = {}): Promise<void> {
   stopSpeaking();
@@ -192,8 +244,12 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
   // waiting a little for it rather than switching to the phone's voice.
   if (cloudUsable() && (await getVoiceId())) {
     if (my !== token) return;
-    if (await speakCloud(text, my, rate)) return;
+    if (await speakCloud(text, my, rate)) {
+      logSound(`AI voice done: "${short(text)}"`);
+      return;
+    }
     if (my !== token) return;
+    logSound(`AI voice unavailable, phone voice for: "${short(text)}"`);
   }
   await speakBrowser(text, my, rate);
 }
@@ -250,6 +306,7 @@ function fetchAudio(text: string, timeoutMs: number): Promise<Blob | null> {
       });
       const type = res.headers.get("content-type") ?? "";
       if (!res.ok || !type.startsWith("audio/")) {
+        logSound(`voice server answered ${res.status} for "${short(text)}"`);
         // Not built (404/501) or not configured (503): skip for the session.
         // Upstream failure (502) or a non-audio reply: skip for a while.
         // Anything else (too long, rate limited, timeout) affects only this one.
@@ -331,7 +388,10 @@ function playBlob(blob: Blob, my: number, rate = 1): Promise<boolean> {
       resolve(ok);
     };
     const onEnd = () => finish(true);
-    const onErr = () => finish(false);
+    const onErr = () => {
+      logSound(`AI voice audio error: code ${el.error?.code ?? "?"}`);
+      finish(false);
+    };
     el.addEventListener("ended", onEnd);
     el.addEventListener("error", onErr);
     el.addEventListener("pause", onEnd);
@@ -341,7 +401,10 @@ function playBlob(blob: Blob, my: number, rate = 1): Promise<boolean> {
         finish(true);
       }
     }, 150);
-    el.play().catch(() => finish(false));
+    el.play().catch((e: unknown) => {
+      logSound(`AI voice play() refused: ${(e as Error)?.name ?? e}`);
+      finish(false);
+    });
   });
 }
 
@@ -382,25 +445,44 @@ export function chunks(text: string): string[] {
   return out.filter(Boolean);
 }
 
+
 async function speakBrowser(text: string, my: number, rate: number): Promise<void> {
   const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
-  if (!synth) return;
+  if (!synth) {
+    logSound("this browser has no phone voice (speechSynthesis)");
+    return;
+  }
+  // A paused engine (after the page was in the background) stays silent until resumed.
+  if (synth.paused) synth.resume();
   for (const part of chunks(text)) {
     if (my !== token) return;
     await new Promise<void>((resolve) => {
       const u = new SpeechSynthesisUtterance(part);
+      currentUtterance = u;
       u.lang = "en-US";
       u.rate = rate;
       const voice = pickVoice();
       if (voice) u.voice = voice;
+      let started = false;
       // Safety net: some engines never fire `end` (or have no voices at all).
-      const fallback = window.setTimeout(resolve, 2500 + part.length * 110);
+      const fallback = window.setTimeout(() => {
+        if (!started) logSound(`phone voice never started: "${short(part)}" (muted or blocked?)`);
+        resolve();
+      }, 2500 + part.length * 110);
       const done = () => {
         window.clearTimeout(fallback);
+        if (currentUtterance === u) currentUtterance = null;
         resolve();
       };
+      u.onstart = () => {
+        started = true;
+        logSound(`phone voice speaking: "${short(part)}"`);
+      };
       u.onend = done;
-      u.onerror = done;
+      u.onerror = (e) => {
+        logSound(`phone voice error: ${(e as SpeechSynthesisErrorEvent).error}`);
+        done();
+      };
       synth.speak(u);
     });
   }
