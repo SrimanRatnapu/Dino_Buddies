@@ -14,6 +14,13 @@ const FIRST_PIECE_CHARS = 120;
 /** Short lines (cues, aiming instructions) wait less for the AI voice than long answers. */
 const SHORT_PHRASE_CHARS = 160;
 const SHORT_WAIT_MS = 4000;
+/**
+ * Once the AI voice has worked this session, wait this long for it rather than
+ * falling back: on an iPhone in silent mode the phone voice is muted while the
+ * AI voice (ordinary audio) still plays, so falling back can mean silence.
+ */
+const HEALTHY_WAIT_MS = 15000;
+let aiWorked = false;
 /** Memory budget for fetched audio (answer pieces can be ~1 MB of WAV each). */
 const CACHE_MAX_BYTES = 20 * 1024 * 1024;
 /**
@@ -291,6 +298,7 @@ function fetchAudio(text: string, timeoutMs: number): Promise<Blob | null> {
   const p = (async () => {
     const saved = await readSaved(text);
     if (saved) {
+      aiWorked = true;
       remember(text, saved);
       inFlight.delete(text);
       return saved;
@@ -315,10 +323,12 @@ function fetchAudio(text: string, timeoutMs: number): Promise<Blob | null> {
         return null;
       }
       const blob = await res.blob();
+      aiWorked = true;
       remember(text, blob);
       void writeSaved(text, blob);
       return blob;
     } catch {
+      logSound(`voice request failed or timed out for "${short(text)}"`);
       return null;
     } finally {
       clearTimeout(timer);
@@ -340,7 +350,11 @@ async function speakCloud(text: string, my: number, rate: number): Promise<boole
   const fetched: Array<Promise<Blob | null>> = [];
   // The first piece is what the listener waits on: short lines wait less before
   // giving up on the AI voice (the fetch carries on and is ready next time).
-  const firstWait = text.length <= SHORT_PHRASE_CHARS ? SHORT_WAIT_MS : FIRST_PIECE_TIMEOUT_MS;
+  const firstWait = aiWorked
+    ? HEALTHY_WAIT_MS
+    : text.length <= SHORT_PHRASE_CHARS
+      ? SHORT_WAIT_MS
+      : FIRST_PIECE_TIMEOUT_MS;
   const get = (i: number) =>
     (fetched[i] ??=
       i === 0
@@ -402,7 +416,8 @@ function playBlob(blob: Blob, my: number, rate = 1): Promise<boolean> {
       }
     }, 150);
     el.play().catch((e: unknown) => {
-      logSound(`AI voice play() refused: ${(e as Error)?.name ?? e}`);
+      // AbortError just means the next line cut this one off; anything else is a real refusal.
+      if (my === token && (e as Error)?.name !== "AbortError") logSound(`AI voice play() refused: ${(e as Error)?.name ?? e}`);
       finish(false);
     });
   });

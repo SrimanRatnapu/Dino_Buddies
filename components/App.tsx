@@ -208,6 +208,8 @@ export default function App() {
   const guideRef = useRef<AbortController | null>(null);
   const takeNowRef = useRef<AbortController | null>(null);
   const lastInstruction = useRef({ text: "", at: 0 });
+  /** Aiming instructions: one plays at a time; newer ones wait and only the latest is said next. */
+  const instructionQueue = useRef<{ busy: boolean; next: string | null }>({ busy: false, next: null });
   const cameraProblemRef = useRef<string | null>(null);
   /** Bumped to end the running conversation loop. */
   const loopRef = useRef(0);
@@ -565,7 +567,7 @@ export default function App() {
         if (text !== last.text || now - last.at > repeatAfter) {
           lastInstruction.current = { text, at: now };
           cue.nudge();
-          void say(text);
+          sayInstruction(text);
         }
       }, seenList());
       if (stopCtrl.signal.aborted) return "stopped";
@@ -601,6 +603,34 @@ export default function App() {
       setAimView(null);
       if (phaseRef.current === "guiding") go("idle");
     }
+  }
+
+  /**
+   * Says an aiming instruction without cutting off the one before it. New
+   * instructions arrive about once a second; if each one interrupted the last,
+   * a line still waiting for its AI audio would never be heard. So the latest
+   * waits its turn and older pending ones are dropped. Stops when aiming ends.
+   */
+  function sayInstruction(text: string) {
+    const q = instructionQueue.current;
+    if (q.busy) {
+      q.next = text;
+      return;
+    }
+    q.busy = true;
+    void (async () => {
+      try {
+        let line: string | null = text;
+        while (line && phaseRef.current === "guiding") {
+          await say(line);
+          line = q.next;
+          q.next = null;
+        }
+      } finally {
+        q.busy = false;
+        q.next = null;
+      }
+    })();
   }
 
   /* ---------------------------------------------------------------- the tour ("I am here") */
