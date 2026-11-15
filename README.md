@@ -1,4 +1,4 @@
-# Wildlife Described
+# TourBuddy
 
 Point a phone at an exhibit or animal and hear it described. See `CLAUDE.md` for the plan and the A/B contract.
 

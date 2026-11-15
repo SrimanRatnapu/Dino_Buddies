@@ -16,10 +16,10 @@ const font = Atkinson_Hyperlegible_Next({
 });
 
 export const metadata: Metadata = {
-  title: "Wildlife Described",
+  title: "TourBuddy",
   description: "Point your camera at an exhibit or animal and hear it described aloud.",
-  applicationName: "Wildlife Described",
-  appleWebApp: { capable: true, title: "Wildlife Described", statusBarStyle: "black" },
+  applicationName: "TourBuddy",
+  appleWebApp: { capable: true, title: "TourBuddy", statusBarStyle: "black" },
 };
 
 export const viewport: Viewport = {

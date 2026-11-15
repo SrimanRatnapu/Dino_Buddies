@@ -1,4 +1,4 @@
-# Project Context: Wildlife Described (working title)
+# Project Context: TourBuddy (working title)
 
 Read this first. It is the shared context and the work-split contract for a weekend hackathon build, used by two builders (people or agents) working in parallel. Keep it updated as decisions change.
 

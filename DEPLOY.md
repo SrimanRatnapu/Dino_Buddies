@@ -21,7 +21,7 @@ gcloud secrets add-iam-policy-binding gemini-api-key --member="serviceAccount:$(
 Deploy from the repo root. This uses the `Dockerfile`:
 
 ```bash
-gcloud run deploy wildlife-described --source . --region us-central1 --allow-unauthenticated --min-instances 1 --max-instances 3 --set-secrets GEMINI_API_KEY=gemini-api-key:latest --set-env-vars MOCK=0,GEMINI_MODEL=gemini-3.5-flash
+gcloud run deploy tourbuddy --source . --region us-central1 --allow-unauthenticated --min-instances 1 --max-instances 3 --set-secrets GEMINI_API_KEY=gemini-api-key:latest --set-env-vars MOCK=0,GEMINI_MODEL=gemini-3.5-flash
 ```
 
 `--min-instances 1` avoids a cold start in the middle of the demo. It costs a little while it runs, so set it back to 0 after the event.

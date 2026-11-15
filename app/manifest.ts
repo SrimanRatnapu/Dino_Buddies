@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Wildlife Described",
-    short_name: "Described",
+    name: "TourBuddy",
+    short_name: "TourBuddy",
     description: "Point your camera at an exhibit or animal and hear it described aloud.",
     start_url: "/",
     display: "standalone",

@@ -42,7 +42,7 @@ import {
   type VisitRecord,
 } from "./visitMemory";
 
-export const APP_NAME = "Wildlife Described";
+export const APP_NAME = "TourBuddy";
 
 /**
  * What the app is doing right now. "idle" means asleep: not listening, waiting
@@ -70,10 +70,10 @@ const WAIT_CUES: Record<ResultKind, string> = {
 
 /** Spoken when "Ask a question" starts the plain conversation (no tour) for the first time. */
 const FIRST_GREETING =
-  "Hi, I'm Wildlife Described. Point your phone at an exhibit and say: what's this. Say help any time.";
+  "Hi, I'm TourBuddy. Point your phone at an exhibit and say: what's this. Say help any time.";
 /** The very first tap ever: the tour starts, so explain it once. */
 const FIRST_TOUR_START =
-  "Hi, I'm Wildlife Described. Hold your phone up in front of you at chest height and turn slowly. " +
+  "Hi, I'm TourBuddy. Hold your phone up in front of you at chest height and turn slowly. " +
   "I'll lead you to each exhibit and describe it. After each one, ask me anything, or stay quiet and I'll find the next. " +
   "Say end tour to stop.";
 const GREETING = "I'm listening.";

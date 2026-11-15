@@ -79,7 +79,7 @@ for (const model of models) {
     console.log(`   ${model.padEnd(30)} OK in ${Date.now() - t} ms, ${(wav.length / 1024).toFixed(0)} KB (${mime})`);
     if (!working) {
       working = model;
-      const file = join(tmpdir(), "wildlife-voice-check.wav");
+      const file = join(tmpdir(), "tourbuddy-voice-check.wav");
       writeFileSync(file, wav);
       console.log(`   -> saved; listen with:  afplay ${file}   (Mac)`);
     }

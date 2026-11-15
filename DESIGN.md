@@ -1,4 +1,4 @@
-# DESIGN.md: Wildlife Described
+# DESIGN.md: TourBuddy
 
 Owner: A (Experience). This is the design system the UI code follows. It merges the Google Stitch design system (`/design/stitch/DESIGN.stitch.md`, screens in `/design/stitch/`) with the app's accessibility rules. Where the two conflict, the accessibility rules here win. See **Stitch reconciliation** below.
 
