@@ -188,6 +188,11 @@ Times are relative to kickoff. Replace with real clock times once demos are sche
   - On a first look, the describe prompt shows the list in order and asks Gemini to open with one short link to an earlier exhibit when there is a real connection, besides naming repeats.
   - UI: an "Exhibits visited" list under the answer (sessionStorage key `visited`, up to 30), and voice commands "what have I seen" and "new visit".
 
+- **2026-11-15, A (Sriman reported the Gemini voice not working): no contract change, still v1.3.**
+  - Cause 1 (API key mode): the SDK defaults the Gemini API to `v1`, which rejects `speechConfig` ("Unknown name speechConfig at generation_config"), so every voice request failed and the app quietly used the phone voice. The key client now uses `v1beta`. Vertex AI mode already used `v1beta1`.
+  - Cause 2 (likely on Vertex): the voice model names were 2.5-era guesses. The server now tries `SPEAK_MODELS` in order (`gemini-3.8-flash-tts`, `gemini-3.8-flash-lite-tts`, `gemini-3.1-flash-tts-preview`, then the 2.5 names) and remembers the first that works.
+  - Client: the first audio piece is about one sentence and gets 10 s, so the voice starts sooner and slow first replies aren't dropped. New `npm run voice-check` diagnoses the voice with the real credentials.
+
 ## Backup ideas (only if this stalls)
 - Wildlife Rehab Triage: identify an injured animal, give "intervene or leave it" guidance, and look up the nearest rehabber with Maps.
 - FossilID: Gemini vision identification of possible fossil finds with a "report it, don't dig it" flow.

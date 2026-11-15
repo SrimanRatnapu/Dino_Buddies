@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "dev:mock": "MOCK=1 next dev",
     "models": "node scripts/list-models.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "voice-check": "node --env-file=.env.local scripts/voice-check.mjs"
   },
   "dependencies": {
     "@google/genai": "3.3.0",

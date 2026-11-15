@@ -9,6 +9,7 @@ npm install
 cp .env.example .env.local   # MOCK=1 by default, no key needed
 npm run dev                  # http://localhost:3000
 npm run smoke                # hits /api/health, /api/describe, /api/speak
+npm run voice-check          # tries each Gemini voice model with your .env.local and saves a sample WAV
 ```
 
 For real Gemini: set `GEMINI_API_KEY` in `.env.local` and `MOCK=0`. Run `npm run models` (with the key exported) to see which model names your key can use. The default is `gemini-3.5-flash` (our Vertex AI project got a 404 for `gemini-2.5-flash`). If it 404s, the server retries once with `gemini-3.1-flash-lite`.

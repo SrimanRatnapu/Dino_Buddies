@@ -18,7 +18,9 @@ export function getClient(): GoogleGenAI {
   }
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new ApiFailure("not_configured", undefined, "GEMINI_API_KEY missing");
-  client = new GoogleGenAI({ apiKey });
+  // The SDK defaults the Gemini API to v1, which rejects speechConfig (the voice).
+  // v1beta is what AI Studio documents and supports every feature used here.
+  client = new GoogleGenAI({ apiKey, apiVersion: "v1beta" });
   return client;
 }
 

@@ -1,4 +1,4 @@
-import { GEMINI_MODEL, GCP_LOCATION, GCP_PROJECT, SPEAK_ENGINE, SPEAK_MODEL, SPEAK_VOICE, USE_VERTEX, geminiConfigured, isMock } from "@/lib/gemini/config";
+import { GEMINI_MODEL, GCP_LOCATION, GCP_PROJECT, SPEAK_ENGINE, SPEAK_MODELS, SPEAK_VOICE, USE_VERTEX, geminiConfigured, isMock } from "@/lib/gemini/config";
 import { ttsKey, TTS_VOICE } from "@/lib/tts/google";
 import { CONTRACT_VERSION } from "@/shared/contract";
 
@@ -18,7 +18,7 @@ export function GET() {
     tts: Boolean(ttsKey()),
     voice:
       SPEAK_ENGINE !== "cloud" && geminiConfigured()
-        ? `gemini (${SPEAK_MODEL}, ${SPEAK_VOICE})`
+        ? `gemini (${SPEAK_VOICE}; tries ${SPEAK_MODELS.join(", ")})`
         : ttsKey()
           ? "cloud-tts"
           : "browser",

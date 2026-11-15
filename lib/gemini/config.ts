@@ -22,9 +22,25 @@ export const AIM_TIMEOUT_MS = Number(process.env.AIM_TIMEOUT_MS || 6000);
  * Cloud Text-to-Speech only. Without either, the app uses the phone's voice.
  */
 export const SPEAK_ENGINE = (process.env.SPEAK_ENGINE || "gemini").toLowerCase();
-export const SPEAK_MODEL = process.env.SPEAK_MODEL || "gemini-2.5-flash-preview-tts";
-/** Used once if SPEAK_MODEL returns 404 (Vertex AI may list the model under this name). */
-export const SPEAK_FALLBACK_MODEL = process.env.SPEAK_FALLBACK_MODEL || "gemini-2.5-flash-tts";
+export const SPEAK_MODEL = process.env.SPEAK_MODEL || "gemini-3.8-flash-tts";
+/** Tried next if SPEAK_MODEL isn't available to the project. */
+export const SPEAK_FALLBACK_MODEL = process.env.SPEAK_FALLBACK_MODEL || "gemini-3.1-flash-tts-preview";
+/**
+ * Every voice model to try, in order, until one answers. Projects differ in
+ * which they can use (a Vertex AI project may 404 on older names), and the
+ * first one that works is remembered for the server's lifetime.
+ */
+export const SPEAK_MODELS = [
+  ...new Set([
+    SPEAK_MODEL,
+    SPEAK_FALLBACK_MODEL,
+    "gemini-3.8-flash-tts",
+    "gemini-3.8-flash-lite-tts",
+    "gemini-3.1-flash-tts-preview",
+    "gemini-2.5-flash-preview-tts",
+    "gemini-2.5-flash-tts",
+  ]),
+];
 /** A Gemini prebuilt voice, for example Kore, Aoede, Charon, Puck or Sulafat. */
 export const SPEAK_VOICE = process.env.SPEAK_VOICE || "Kore";
 

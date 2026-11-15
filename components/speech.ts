@@ -5,10 +5,12 @@
 // instantly after the first time, and any failure falls back to the browser.
 
 /** First piece of a long answer: waiting longer than this is worse than the robot voice. */
-const FIRST_PIECE_TIMEOUT_MS = 7000;
+const FIRST_PIECE_TIMEOUT_MS = 10000;
 const LATER_PIECE_TIMEOUT_MS = 15000;
 /** Long answers are sent in pieces of about this many characters (whole sentences). */
 const PIECE_CHARS = 240;
+/** The first piece is kept short (about one sentence) so the voice starts sooner. */
+const FIRST_PIECE_CHARS = 120;
 /** Short phrases (cues, aiming instructions) are cached in the AI voice after first use. */
 const SHORT_PHRASE_CHARS = 160;
 const CACHE_MAX = 80;
@@ -93,12 +95,13 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
   await speakBrowser(text, my, rate);
 }
 
-/** Groups sentences into pieces of about PIECE_CHARS. */
+/** Groups sentences into pieces of about PIECE_CHARS; the first is shorter. */
 function pieces(text: string): string[] {
   const out: string[] = [];
   let cur = "";
   for (const sentence of chunks(text)) {
-    if (cur && cur.length + sentence.length + 1 > PIECE_CHARS) {
+    const limit = out.length === 0 ? FIRST_PIECE_CHARS : PIECE_CHARS;
+    if (cur && cur.length + sentence.length + 1 > limit) {
       out.push(cur);
       cur = sentence;
     } else {
