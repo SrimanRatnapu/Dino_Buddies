@@ -32,6 +32,9 @@ function callModel(model: string, parts: Part[], signal: AbortSignal) {
   });
 }
 
+/** The describe model that works for this project (the fallback is remembered after a 404). */
+let describeModelInUse = GEMINI_MODEL;
+
 export interface DescribeResult {
   body: DescribeSuccess;
   model: string;
@@ -51,7 +54,7 @@ export async function describe(req: ParsedRequest): Promise<DescribeResult> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), GEMINI_TIMEOUT_MS);
 
-  let model = GEMINI_MODEL;
+  let model = describeModelInUse;
   try {
     let res;
     try {
@@ -59,7 +62,13 @@ export async function describe(req: ParsedRequest): Promise<DescribeResult> {
     } catch (err) {
       // Retired or misspelled model name: retry once on the alias.
       if (err instanceof ApiError && err.status === 404 && GEMINI_FALLBACK_MODEL !== model) {
-        console.warn(`[gemini] ${model} returned 404, retrying with ${GEMINI_FALLBACK_MODEL}`);
+        console.warn(`[gemini] ${model} returned 404, using ${GEMINI_FALLBACK_MODEL} from now on`);
+        model = GEMINI_FALLBACK_MODEL;
+        res = await callModel(model, parts, ctrl.signal);
+        describeModelInUse = model; // don't pay for the 404 on every request
+      } else if (err instanceof ApiError && err.status === 429 && GEMINI_FALLBACK_MODEL !== model) {
+        // Out of quota on the main model for a moment: answer from the fallback model instead of failing.
+        console.warn(`[gemini] ${model} is rate limited, answering with ${GEMINI_FALLBACK_MODEL}`);
         model = GEMINI_FALLBACK_MODEL;
         res = await callModel(model, parts, ctrl.signal);
       } else if (err instanceof ApiError && (err.status === 500 || err.status === 503)) {

@@ -11,10 +11,19 @@
 const WINDOW_MS = 60_000;
 const MAX_TRACKED = 5_000;
 
+function speakLimit(): number {
+  const raw = process.env.RATE_LIMIT_SPEAK_PER_MIN;
+  if (raw === undefined || raw === "") return 180;
+  const n = Number(raw);
+  return n > 0 ? Math.max(180, n) : 0;
+}
+
 const LIMITS = {
   describe: Number(process.env.RATE_LIMIT_DESCRIBE_PER_MIN ?? 30),
   // Every spoken line uses the AI voice, and the page prepares about 18 phrases on load.
-  speak: Number(process.env.RATE_LIMIT_SPEAK_PER_MIN ?? 180),
+  // Never below 180: older .env.local files still say 60 (the template's old value), which
+  // the voice preload alone can exceed, silently pushing lines back to the phone voice. 0 = off.
+  speak: speakLimit(),
   // Guidance sends about one frame a second while aiming.
   aim: Number(process.env.RATE_LIMIT_AIM_PER_MIN ?? 120),
 } as const;

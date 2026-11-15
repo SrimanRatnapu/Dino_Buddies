@@ -35,23 +35,28 @@ export function normalizeAim(out: Partial<AimResponse>, hadSeen = false): AimRes
   return { status: fixedStatus, move, subject, already_seen: alreadySeen };
 }
 
+/** The aiming model that works for this project (the fallback is remembered after a 404). */
+let aimModelInUse = AIM_MODEL;
+
 export async function aim(image: NonNullable<ParsedRequest["image"]>, seen?: string[]) {
   const parts = [{ inlineData: { mimeType: image.mimeType, data: image.data } }, { text: aimUserPrompt(seen) }];
-  const opts = { system: AIM_SYSTEM_PROMPT, schema: AIM_SCHEMA, temperature: 0.1, maxOutputTokens: 1024 };
+  const opts = { system: AIM_SYSTEM_PROMPT, schema: AIM_SCHEMA, temperature: 0.1, maxOutputTokens: 2048 };
   const started = Date.now();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), AIM_TIMEOUT_MS);
-  let model = AIM_MODEL;
+  let model = aimModelInUse;
   try {
     let res;
     try {
       res = await callModel(model, parts, ctrl.signal, opts);
     } catch (err) {
-      // Aiming model not available to this project: use the main model instead.
+      // Aiming model not available to this project: use the main model instead,
+      // and keep using it (aiming calls come about once a second).
       if (err instanceof ApiError && err.status === 404 && model !== GEMINI_MODEL) {
-        console.warn(`[aim] ${model} returned 404, retrying with ${GEMINI_MODEL}`);
+        console.warn(`[aim] ${model} returned 404, using ${GEMINI_MODEL} from now on`);
         model = GEMINI_MODEL;
         res = await callModel(model, parts, ctrl.signal, opts);
+        aimModelInUse = model;
       } else {
         throw err;
       }

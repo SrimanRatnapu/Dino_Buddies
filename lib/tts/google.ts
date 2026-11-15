@@ -4,6 +4,8 @@
  * Uses GOOGLE_TTS_API_KEY, falling back to GEMINI_API_KEY (works only if that
  * key's project has the TTS API enabled and the key isn't restricted).
  */
+import { USE_VERTEX } from "@/lib/gemini/config";
+
 const ENDPOINT = "https://texttospeech.googleapis.com/v1/text:synthesize";
 const MAX_TEXT_BYTES = 4800; // API limit is 5000 bytes of input
 
@@ -18,7 +20,9 @@ export class TtsError extends Error {
 }
 
 export function ttsKey(): string | undefined {
-  return process.env.GOOGLE_TTS_API_KEY || process.env.GEMINI_API_KEY;
+  // With Vertex AI the Gemini key (if one is still in .env.local) isn't the active
+  // credential and may be stale, so only an explicit TTS key counts there.
+  return process.env.GOOGLE_TTS_API_KEY || (USE_VERTEX ? undefined : process.env.GEMINI_API_KEY);
 }
 
 function truncateBytes(text: string, max: number): string {
