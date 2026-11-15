@@ -88,7 +88,8 @@ const MAX_TOUR_QUESTIONS = 4;
 const TOUR_START = "Let's explore. Hold the phone up in front of you and turn slowly.";
 
 /** How one round of aiming ended. */
-type GuideOutcome = "described" | "nothing-new" | "stopped" | "failed";
+/** "describe-failed": a photo was taken but the description request failed (already said aloud). */
+type GuideOutcome = "described" | "describe-failed" | "nothing-new" | "stopped" | "failed";
 
 /** Don't repeat the same aiming instruction more often than this. */
 const REPEAT_INSTRUCTION_MS = 4000;
@@ -317,7 +318,8 @@ export default function App() {
   /* ---------------------------------------------------------------- actions
      Each resolves when its spoken reply has finished. */
 
-  async function run(req: DescribeRequest, kind: ResultKind, question?: string, lead?: string) {
+  /** Resolves true when an answer was produced and spoken, false on an error or if cancelled. */
+  async function run(req: DescribeRequest, kind: ResultKind, question?: string, lead?: string): Promise<boolean> {
     requestRef.current?.abort();
     const ctrl = new AbortController();
     requestRef.current = ctrl;
@@ -329,7 +331,7 @@ export default function App() {
 
     const out = await describeImage(req, ctrl.signal);
     window.clearTimeout(still);
-    if (ctrl.signal.aborted || requestRef.current !== ctrl) return;
+    if (ctrl.signal.aborted || requestRef.current !== ctrl) return false;
     requestRef.current = null;
     go("idle");
 
@@ -337,7 +339,7 @@ export default function App() {
       cue.error();
       showError(out.error.message);
       await say(out.error.message);
-      return;
+      return false;
     }
     cue.done();
     if (kind === "describe") remember(out.data.subject);
@@ -347,6 +349,7 @@ export default function App() {
     shownRef.current = next;
     setShown(next);
     await say(spokenText(out.data, kind), { cloud: true });
+    return true;
   }
 
   /** Adds a described subject to the visit memory (most recent last, no duplicates). */
@@ -475,7 +478,7 @@ export default function App() {
     setPhotoUrl(`data:image/jpeg;base64,${image}`);
     baseRef.current = null;
     const seen = visitedRef.current.length ? seenList() : undefined;
-    await run({ image, mode: "default", seen }, "describe", undefined, lead);
+    return run({ image, mode: "default", seen }, "describe", undefined, lead);
   }
 
   /**
@@ -579,20 +582,28 @@ export default function App() {
       if (guideRef.current === stopCtrl) guideRef.current = null;
       if (takeNowRef.current === takeNow) takeNowRef.current = null;
       setAimView(null);
-      // On a tour, a timeout means nothing new is in reach: don't describe a random or familiar view.
-      if (opts.tour && result.how === "timeout") return "nothing-new";
+      // An exhibit that isn't on the visited list was in view, just not framed perfectly.
+      const newInView = result.lastStatus === "adjust" && !result.lastWasSeen;
+      // On a tour, a timeout with nothing new in view means nothing new is in reach:
+      // don't describe a blank wall or a familiar exhibit.
+      if (opts.tour && result.how === "timeout" && !newInView) return "nothing-new";
       cue.capture();
       const lead =
-        result.how === "timeout" && result.lastWasSeen
-          ? "I only found things you've already heard about, so I took the photo anyway."
-          : result.how === "timeout"
-          ? "I couldn't find a clear view, so I took the photo anyway."
-          : result.how === "unavailable"
-            ? "Aiming help isn't working right now, so I took the photo."
-            : undefined;
-      await sendImage(result.frame, lead);
+        result.how === "stalled"
+          ? "That's close enough."
+          : result.how === "timeout" && newInView
+            ? "That's the best view I could get, so I took the photo."
+            : result.how === "timeout" && result.lastWasSeen
+              ? "I only found things you've already heard about, so I took the photo anyway."
+              : result.how === "timeout"
+                ? "I couldn't find a clear view, so I took the photo anyway."
+                : result.how === "unavailable"
+                  ? "Aiming help isn't working right now, so I took the photo."
+                  : undefined;
+      const ok = await sendImage(result.frame, lead);
       // Without aiming help a tour would just photograph the same spot over and over.
-      return opts.tour && result.how === "unavailable" ? "failed" : "described";
+      if (opts.tour && result.how === "unavailable") return "failed";
+      return ok ? "described" : "describe-failed";
     } catch (err) {
       if (stopCtrl.signal.aborted) return "stopped";
       await cameraFailed(err);
@@ -662,6 +673,7 @@ export default function App() {
     touringRef.current = true;
     setTouring(true);
     let empty = 0;
+    let describeFailures = 0;
     try {
       await say(opening);
       while (tourRef.current === my) {
@@ -671,6 +683,16 @@ export default function App() {
           if (!cameraProblemRef.current) await say("The tour has stopped. Tap the screen to try again.");
           break;
         }
+        if (outcome === "describe-failed") {
+          // The error was already spoken. Try once more, then stop rather than loop on errors.
+          if (++describeFailures >= 2) {
+            await say("I'm having trouble describing things right now, so the tour has stopped. Tap the screen to try again.");
+            break;
+          }
+          await say("Let me try that again.");
+          continue;
+        }
+        describeFailures = 0;
         if (outcome === "nothing-new") {
           if (++empty >= MAX_EMPTY_ROUNDS) {
             await say("I can't find anything new from here. Walk somewhere else, then tap the screen.");

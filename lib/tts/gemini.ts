@@ -62,7 +62,16 @@ export async function synthesizeGemini(text: string, signal?: AbortSignal): Prom
   for (const model of order) {
     let res;
     try {
-      res = await generate(model, text, signal);
+      try {
+        res = await generate(model, text, signal);
+      } catch (err) {
+        // Busy or briefly unavailable: one more try after a short pause.
+        const status = err instanceof ApiError ? err.status : 0;
+        if (signal?.aborted || (status !== 429 && status !== 500 && status !== 503)) throw err;
+        console.warn(`[speak] ${model} answered ${status}, retrying once`);
+        await new Promise((r) => setTimeout(r, 800));
+        res = await generate(model, text, signal);
+      }
     } catch (err) {
       if (signal?.aborted || !modelUnavailable(err)) throw err;
       console.warn(`[speak] ${model} unavailable (${(err as ApiError).status}), trying the next voice model`);

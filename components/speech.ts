@@ -320,6 +320,8 @@ function fetchAudio(text: string, timeoutMs: number): Promise<Blob | null> {
         // Anything else (too long, rate limited, timeout) affects only this one.
         if ([404, 501, 503].includes(res.status)) cloudOffUntil = Infinity;
         else if (res.status === 502 || res.ok) cloudOffUntil = Date.now() + CLOUD_RETRY_MS;
+        // Too many requests: use the phone voice for a short stretch, not line by line.
+        else if (res.status === 429) cloudOffUntil = Date.now() + 15_000;
         return null;
       }
       const blob = await res.blob();

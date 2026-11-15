@@ -21,7 +21,15 @@ export const GUIDE_TIMEOUT_MS = 25_000;
 const READY_STREAK = 2;
 const SETTLE_MS = 400;
 
-export type GuideEnd = "ready" | "manual" | "timeout" | "unavailable";
+/** "stalled": the same instruction kept coming back, so the view is taken as good enough. */
+export type GuideEnd = "ready" | "manual" | "timeout" | "unavailable" | "stalled";
+
+/**
+ * The same instruction this many times in a row means the person can't, or
+ * needn't, do more: take the photo rather than loop. Moving closer or back is
+ * often blocked by a barrier, so those give up sooner than turning or tilting.
+ */
+const STALL_REPEATS: Record<AimMove, number> = { closer: 3, back: 3, left: 6, right: 6, up: 6, down: 6, none: 6 };
 
 export interface GuideResult {
   /** Full-size photo, base64 JPEG. */
@@ -31,6 +39,8 @@ export interface GuideResult {
   subject: string;
   /** The last reply said the only attraction in view was one already described this visit. */
   lastWasSeen: boolean;
+  /** The last reply's status, or null if there was none: "adjust" means an attraction was in view. */
+  lastStatus: AimResponse["status"] | null;
 }
 
 const MOVES: Record<AimMove, string> = {
@@ -122,9 +132,10 @@ export async function guideToPhoto(
   if (!stop) return null;
 
   let lastWasSeen = false;
+  let lastStatus: AimResponse["status"] | null = null;
   const take = (how: GuideEnd, subject: string): GuideResult | null => {
     const frame = captureFrame(video);
-    return frame ? { frame, how, subject, lastWasSeen } : null;
+    return frame ? { frame, how, subject, lastWasSeen, lastStatus } : null;
   };
 
   try {
@@ -134,6 +145,8 @@ export async function guideToPhoto(
     let ready = 0;
     let failures = 0;
     let subject = "";
+    let lastMove: AimMove | null = null;
+    let sameMove = 0;
 
     while (!stopSignal.aborted) {
       if (takeNowSignal.aborted) return take("manual", subject);
@@ -153,10 +166,20 @@ export async function guideToPhoto(
         failures = 0;
         if (aim.subject) subject = aim.subject;
         lastWasSeen = Boolean(aim.already_seen);
+        lastStatus = aim.status;
         // Something already heard about is never auto-captured: the user taps to hear it again.
         ready = aim.status === "ready" && !aim.already_seen ? ready + 1 : 0;
         onAim(aim, ready);
         if (ready >= READY_STREAK) return take("ready", subject);
+        // A new attraction is in view but the same instruction keeps coming back.
+        if (aim.status === "adjust" && !aim.already_seen) {
+          sameMove = aim.move === lastMove ? sameMove + 1 : 1;
+          lastMove = aim.move;
+          if (sameMove >= STALL_REPEATS[aim.move]) return take("stalled", subject);
+        } else {
+          lastMove = null;
+          sameMove = 0;
+        }
       }
       await sleep(Math.max(0, MIN_INTERVAL_MS - (Date.now() - sent)), either);
     }
