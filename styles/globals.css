@@ -676,3 +676,19 @@ body {
   color: var(--text-muted);
   font-family: ui-monospace, Menlo, monospace;
 }
+
+.debug-frame {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.debug-frame img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border: 2px solid var(--info);
+  border-radius: 6px;
+  flex: none;
+}

@@ -1,3 +1,4 @@
+import { audioMode } from "./speech";
 // Voice input with the browser's SpeechRecognition (Chrome, Edge, Safari).
 // The app runs it as a conversation: one listenOnce() per turn, reopened after
 // each spoken reply. Where it is missing, the UI falls back to a typed question.
@@ -92,6 +93,7 @@ export function listenOnce(signal?: AbortSignal, timeoutMs = 8000): Promise<stri
     };
     rec.onend = () => settle(() => reject(new ListenError("no-speech")));
     try {
+      audioMode("capturing"); // hand the audio session back before the microphone opens (iPhone)
       rec.start();
     } catch {
       settle(() => reject(new ListenError("failed")));

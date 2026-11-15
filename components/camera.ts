@@ -1,5 +1,7 @@
 "use client";
 
+import { audioMode, logSound } from "./speech";
+
 export const MAX_EDGE = 1024;
 const JPEG_QUALITY = 0.8;
 
@@ -50,6 +52,7 @@ export async function openCamera(video: HTMLVideoElement, signal?: AbortSignal):
   const unsupported = cameraSupportError();
   if (unsupported) throw unsupported;
 
+  audioMode("capturing");
   let stream: MediaStream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -57,7 +60,15 @@ export async function openCamera(video: HTMLVideoElement, signal?: AbortSignal):
       video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
     });
   } catch (err) {
+    logSound(`camera refused: ${(err as DOMException)?.name ?? err}`);
     throw new CameraError(reasonFor(err));
+  }
+  const track = stream.getVideoTracks()[0];
+  if (track) {
+    logSound(`camera on: ${track.label || "camera"}${track.muted ? " (muted!)" : ""}`);
+    track.addEventListener("mute", () => logSound("camera track muted by the phone"));
+    track.addEventListener("unmute", () => logSound("camera track unmuted"));
+    track.addEventListener("ended", () => logSound("camera track ended"));
   }
   const stop = () => {
     stream.getTracks().forEach((t) => t.stop());
@@ -70,7 +81,7 @@ export async function openCamera(video: HTMLVideoElement, signal?: AbortSignal):
       return null;
     }
     video.srcObject = stream;
-    await video.play().catch(() => {});
+    await video.play().catch((e: unknown) => logSound(`camera preview play() refused: ${(e as Error)?.name ?? e}`));
     const started = Date.now();
     while (!video.videoWidth && Date.now() - started < START_TIMEOUT_MS && !signal?.aborted) await wait(50, signal);
     if (signal?.aborted) {
@@ -78,6 +89,7 @@ export async function openCamera(video: HTMLVideoElement, signal?: AbortSignal):
       return null;
     }
     if (!video.videoWidth) throw new CameraError("The camera didn't send a picture.");
+    logSound(`camera picture: ${video.videoWidth}x${video.videoHeight}${video.paused ? " (preview paused!)" : ""}`);
     return stop;
   } catch (err) {
     stop();
@@ -132,6 +144,25 @@ export function captureFrame(
 ): string | null {
   if (!video || !video.videoWidth || !video.videoHeight) return null;
   return toJpegBase64(video, video.videoWidth, video.videoHeight, maxEdge, quality);
+}
+
+/**
+ * Average brightness of the current video frame, 0 (black) to 255, or null if
+ * there is no frame. A camera that the phone has muted or interrupted keeps
+ * its size but sends black frames.
+ */
+export function frameBrightness(video: HTMLVideoElement | null): number | null {
+  if (!video || !video.videoWidth) return null;
+  const c = document.createElement("canvas");
+  c.width = 16;
+  c.height = 16;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  if (!g) return null;
+  g.drawImage(video, 0, 0, 16, 16);
+  const d = g.getImageData(0, 0, 16, 16).data;
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 4) sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+  return sum / (d.length / 4);
 }
 
 /** A picked or captured photo file as base64 JPEG, resized to MAX_EDGE. */

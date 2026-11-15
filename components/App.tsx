@@ -12,7 +12,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import type { AimMove, DescribeRequest, DescribeSuccess } from "@/shared/contract";
-import { AIM_LINES, guideToPhoto, instructionFor } from "./aimGuide";
+import { AIM_LINES, BlackCameraError, guideToPhoto, instructionFor } from "./aimGuide";
 import { CameraError, cameraSupportError, captureOnce, fileToBase64 } from "./camera";
 import { cue, unlockCues } from "./cues";
 import { clientMockEnabled, describeImage } from "./describeClient";
@@ -175,6 +175,8 @@ export default function App() {
   /** ?debug=1: a panel showing what happened to each spoken line, with a sound test. */
   const [debug, setDebug] = useState(false);
   const [soundLines, setSoundLines] = useState<string[]>([]);
+  /** ?debug=1: the last frame sent for aiming (what Gemini sees) and how bright it is. */
+  const [debugFrame, setDebugFrame] = useState<{ frame: string | null; brightness: number | null; at: number } | null>(null);
   const [cameraProblem, setCameraProblem] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [aimView, setAimView] = useState<AimView | null>(null);
@@ -572,7 +574,7 @@ export default function App() {
           cue.nudge();
           sayInstruction(text);
         }
-      }, seenList());
+      }, seenList(), debug ? (frame, brightness) => setDebugFrame({ frame, brightness, at: Date.now() }) : undefined);
       if (stopCtrl.signal.aborted) return "stopped";
       if (!result) {
         // The camera stopped sending pictures (for example, another app took it).
@@ -606,6 +608,14 @@ export default function App() {
       return ok ? "described" : "describe-failed";
     } catch (err) {
       if (stopCtrl.signal.aborted) return "stopped";
+      if (err instanceof BlackCameraError) {
+        // Not a permanent camera problem: say what's wrong and let the next tap try again.
+        cue.error();
+        const msg = "The camera's picture is completely black. Check nothing is covering the lens, and close other apps using the camera. Then tap the screen to try again.";
+        showError(msg);
+        await say(msg);
+        return "failed";
+      }
       await cameraFailed(err);
       return "failed";
     } finally {
@@ -1388,6 +1398,18 @@ export default function App() {
           >
             Test sound
           </button>
+          {debugFrame && (
+            <p className="debug-frame">
+              {debugFrame.frame && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={`data:image/jpeg;base64,${debugFrame.frame}`} alt="The frame last sent for aiming" />
+              )}
+              <span>
+                What Gemini sees while aiming. Brightness {debugFrame.brightness === null ? "?" : Math.round(debugFrame.brightness)} of 255
+                {debugFrame.brightness !== null && debugFrame.brightness < 4 ? " (black!)" : ""}.
+              </span>
+            </p>
+          )}
           <ol>
             {soundLines.map((l, i) => (
               <li key={i}>{l}</li>

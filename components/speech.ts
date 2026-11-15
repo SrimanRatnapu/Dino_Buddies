@@ -174,6 +174,26 @@ function silentWavUrl(): string {
  * Call from inside a user gesture (tap or key press). iOS only allows audio
  * and speech that were first started from a gesture.
  */
+/**
+ * Safari 17+ (iPhone): "speaking" asks for sound even with the silent switch
+ * on. "capturing" hands the audio session back to the phone before the
+ * microphone or camera is used, because a forced playback session can get in
+ * the way of capture.
+ */
+export function audioMode(mode: "speaking" | "capturing"): void {
+  if (typeof navigator === "undefined") return;
+  const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+  if (!session) return;
+  const want = mode === "speaking" ? "playback" : "auto";
+  if (session.type === want) return;
+  try {
+    session.type = want;
+    logSound(`audio session: ${want}`);
+  } catch {
+    /* not allowed here */
+  }
+}
+
 let synthUnlocked = false;
 
 export function unlockSpeech(): void {
@@ -181,16 +201,7 @@ export function unlockSpeech(): void {
   // iOS only lets speechSynthesis talk after it has spoken inside a tap. The
   // phone-voice fallback now runs after waiting for the AI voice (outside the
   // tap), so unlock it here with a silent utterance.
-  // Safari 17+: play sound even when the iPhone's silent switch is on.
-  const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
-  if (session && session.type !== "playback") {
-    try {
-      session.type = "playback";
-      logSound("audio session set to playback (plays in silent mode)");
-    } catch {
-      /* not allowed here */
-    }
-  }
+  audioMode("speaking");
   if (!synthUnlocked && window.speechSynthesis) {
     synthUnlocked = true;
     logSound(`unlocked phone voice; ${window.speechSynthesis.getVoices().length} voices available`);
@@ -244,6 +255,7 @@ export async function testVoices(): Promise<void> {
 /** Speak text, interrupting anything already playing. Resolves when done or stopped. */
 export async function speak(text: string, opts: SpeakOptions = {}): Promise<void> {
   stopSpeaking();
+  audioMode("speaking");
   const my = token;
   const rate = opts.rate ?? 1;
   if (!text.trim()) return;

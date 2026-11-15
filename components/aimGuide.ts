@@ -6,7 +6,8 @@
 
 import type { AimMove, AimResponse, ApiError } from "@/shared/contract";
 import aimFixtures from "@/fixtures/aim.json";
-import { captureFrame, openCamera, sleep } from "./camera";
+import { captureFrame, frameBrightness, openCamera, sleep } from "./camera";
+import { logSound } from "./speech";
 import { clientMockEnabled } from "./describeClient";
 
 /** Aiming frames are small: guidance needs layout, not detail. */
@@ -120,6 +121,13 @@ async function requestAim(image: string, signal: AbortSignal, seen: string[]): P
  * straight away. `onAim` gets each reply as it arrives.
  * Throws CameraError if the camera can't start.
  */
+/** Frames darker than this (0 to 255) count as black: a muted or interrupted camera, or a covered lens. */
+const BLACK_BELOW = 4;
+const BLACK_FRAMES = 3;
+
+/** The camera is on but its picture stays black, even after restarting it. */
+export class BlackCameraError extends Error {}
+
 export async function guideToPhoto(
   video: HTMLVideoElement,
   stopSignal: AbortSignal,
@@ -127,9 +135,13 @@ export async function guideToPhoto(
   onAim: (aim: AimResponse, readyCount: number) => void,
   /** Subjects already described this visit; guidance prefers something new. */
   seen: string[] = [],
+  /** For the debug panel: each frame sent for aiming, and its brightness. */
+  onFrame?: (smallFrame: string | null, brightness: number | null) => void,
 ): Promise<GuideResult | null> {
-  const stop = await openCamera(video, stopSignal);
+  let stop = await openCamera(video, stopSignal);
   if (!stop) return null;
+  let blackFrames = 0;
+  let restarted = false;
 
   let lastWasSeen = false;
   let lastStatus: AimResponse["status"] | null = null;
@@ -153,6 +165,25 @@ export async function guideToPhoto(
       if (Date.now() - started > GUIDE_TIMEOUT_MS) return take("timeout", subject);
 
       const small = captureFrame(video, AIM_EDGE, AIM_QUALITY);
+      const brightness = frameBrightness(video);
+      onFrame?.(small, brightness);
+      // A black picture means the phone has interrupted the camera (or the lens is
+      // covered). Asking Gemini about it only gets "I don't see an exhibit yet".
+      if (brightness !== null && brightness < BLACK_BELOW) {
+        if (++blackFrames >= BLACK_FRAMES) {
+          if (restarted) throw new BlackCameraError("camera picture stays black");
+          logSound("camera picture is black: restarting the camera");
+          restarted = true;
+          blackFrames = 0;
+          stop();
+          const again = await openCamera(video, stopSignal);
+          if (!again) return null;
+          stop = again;
+        }
+        await sleep(300, either);
+        continue;
+      }
+      blackFrames = 0;
       const sent = Date.now();
       const aim = small ? await requestAim(small, either, seen) : null;
       if (stopSignal.aborted) return null;
