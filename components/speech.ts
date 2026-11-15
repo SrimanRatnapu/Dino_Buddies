@@ -11,9 +11,16 @@ const LATER_PIECE_TIMEOUT_MS = 15000;
 const PIECE_CHARS = 240;
 /** The first piece is kept short (about one sentence) so the voice starts sooner. */
 const FIRST_PIECE_CHARS = 120;
-/** Short phrases (cues, aiming instructions) are cached in the AI voice after first use. */
+/** Short lines (cues, aiming instructions) wait less for the AI voice than long answers. */
 const SHORT_PHRASE_CHARS = 160;
-const CACHE_MAX = 80;
+const SHORT_WAIT_MS = 4000;
+const CACHE_MAX = 120;
+/**
+ * Saved AI audio (Cache Storage) survives reloads, so common phrases are ready
+ * instantly on the next visit. Keys include the voice id from GET /api/speak,
+ * so changing the voice never plays old audio.
+ */
+const SAVED_CACHE = "wd-voice-v1";
 
 let token = 0;
 let audio: HTMLAudioElement | null = null;
@@ -23,6 +30,74 @@ const CLOUD_RETRY_MS = 120_000;
 /** Audio already fetched, by exact text: Repeat and common phrases play instantly. */
 const cache = new Map<string, Blob>();
 const inFlight = new Map<string, Promise<Blob | null>>();
+/** The server's voice id ("gemini:Kore"), or null when it has no AI voice. Undefined until asked. */
+let voiceId: string | null | undefined;
+let voiceIdPromise: Promise<string | null> | null = null;
+
+function getVoiceId(): Promise<string | null> {
+  if (voiceId !== undefined) return Promise.resolve(voiceId);
+  voiceIdPromise ??= fetch("/api/speak", { method: "GET" })
+    .then((r) => (r.ok ? r.json() : { voice: null }))
+    .then((j: { voice?: string | null }) => {
+      voiceId = typeof j?.voice === "string" ? j.voice : null;
+      if (!voiceId) cloudOffUntil = Infinity; // no AI voice configured: don't wait for one
+      return voiceId;
+    })
+    .catch(() => {
+      voiceIdPromise = null; // offline: try again later
+      return null;
+    });
+  return voiceIdPromise;
+}
+
+function savedKey(id: string, text: string): string {
+  // FNV-1a hash keeps the key short; the text itself is also in the URL for safety against collisions.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  return `/__voice/${encodeURIComponent(id)}/${h.toString(36)}?t=${encodeURIComponent(text.slice(0, 200))}`;
+}
+
+async function readSaved(text: string): Promise<Blob | null> {
+  try {
+    const id = await getVoiceId();
+    if (!id || typeof caches === "undefined") return null;
+    const hit = await (await caches.open(SAVED_CACHE)).match(savedKey(id, text));
+    return hit ? await hit.blob() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeSaved(text: string, blob: Blob): Promise<void> {
+  try {
+    const id = await getVoiceId();
+    if (!id || typeof caches === "undefined") return;
+    await (await caches.open(SAVED_CACHE)).put(savedKey(id, text), new Response(blob, { headers: { "Content-Type": blob.type } }));
+  } catch {
+    /* storage full or unavailable: the in-memory cache still works */
+  }
+}
+
+function remember(text: string, blob: Blob) {
+  cache.set(text, blob);
+  if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
+}
+
+/**
+ * Fetches the AI voice for fixed phrases in the background (no tap needed), so
+ * the first time they're said they already sound like the rest. Two at a time.
+ */
+export async function prepareVoice(texts: string[]): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (!(await getVoiceId())) return;
+  const queue = [...new Set(texts.flatMap((t) => pieces(t)))].filter((t) => !cache.has(t));
+  const worker = async () => {
+    for (let t = queue.shift(); t !== undefined && cloudUsable(); t = queue.shift()) {
+      await fetchAudio(t, LATER_PIECE_TIMEOUT_MS);
+    }
+  };
+  await Promise.all([worker(), worker()]);
+}
 
 /** A tiny silent WAV, used to unlock audio playback on iOS inside a tap. */
 function silentWavUrl(): string {
@@ -68,7 +143,7 @@ export function stopSpeaking(): void {
 }
 
 export interface SpeakOptions {
-  /** Use the AI voice now, even though the first piece takes a moment. For answers, not cues. */
+  /** Kept for callers; every line now uses the AI voice when it's available. */
   cloud?: boolean;
   rate?: number;
 }
@@ -81,16 +156,12 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
   const my = token;
   const rate = opts.rate ?? 1;
   if (!text.trim()) return;
-  const cached = cache.get(text);
-  if (cached && cloudUsable()) {
-    if (await playBlob(cached, my, rate)) return;
+  // One voice throughout: every line uses the AI voice when there is one,
+  // waiting a little for it rather than switching to the phone's voice.
+  if (cloudUsable() && (await getVoiceId())) {
     if (my !== token) return;
-  } else if (opts.cloud && cloudUsable()) {
     if (await speakCloud(text, my, rate)) return;
     if (my !== token) return;
-  } else if (text.length <= SHORT_PHRASE_CHARS && cloudUsable()) {
-    // Say it now in the browser voice, and fetch the AI voice for next time.
-    void fetchAudio(text, LATER_PIECE_TIMEOUT_MS);
   }
   await speakBrowser(text, my, rate);
 }
@@ -112,6 +183,17 @@ function pieces(text: string): string[] {
   return out;
 }
 
+/** Resolves with the promise's value, or null if it takes longer than ms (the work carries on). */
+function within<T>(p: Promise<T | null>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), ms);
+    p.then((v) => {
+      clearTimeout(t);
+      resolve(v);
+    });
+  });
+}
+
 /** Fetches (or reuses) the AI voice for one piece of text. Null on any failure. */
 function fetchAudio(text: string, timeoutMs: number): Promise<Blob | null> {
   const hit = cache.get(text);
@@ -119,6 +201,12 @@ function fetchAudio(text: string, timeoutMs: number): Promise<Blob | null> {
   const pending = inFlight.get(text);
   if (pending) return pending;
   const p = (async () => {
+    const saved = await readSaved(text);
+    if (saved) {
+      remember(text, saved);
+      inFlight.delete(text);
+      return saved;
+    }
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
@@ -138,8 +226,8 @@ function fetchAudio(text: string, timeoutMs: number): Promise<Blob | null> {
         return null;
       }
       const blob = await res.blob();
-      cache.set(text, blob);
-      if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
+      remember(text, blob);
+      void writeSaved(text, blob);
       return blob;
     } catch {
       return null;
@@ -161,8 +249,14 @@ function fetchAudio(text: string, timeoutMs: number): Promise<Blob | null> {
 async function speakCloud(text: string, my: number, rate: number): Promise<boolean> {
   const parts = pieces(text);
   const fetched: Array<Promise<Blob | null>> = [];
+  // The first piece is what the listener waits on: short lines wait less before
+  // giving up on the AI voice (the fetch carries on and is ready next time).
+  const firstWait = text.length <= SHORT_PHRASE_CHARS ? SHORT_WAIT_MS : FIRST_PIECE_TIMEOUT_MS;
   const get = (i: number) =>
-    (fetched[i] ??= fetchAudio(parts[i], i === 0 ? FIRST_PIECE_TIMEOUT_MS : LATER_PIECE_TIMEOUT_MS));
+    (fetched[i] ??=
+      i === 0
+        ? within(fetchAudio(parts[0], LATER_PIECE_TIMEOUT_MS), firstWait)
+        : fetchAudio(parts[i], LATER_PIECE_TIMEOUT_MS));
   get(0);
   if (parts.length > 1) get(1);
   for (let i = 0; i < parts.length; i++) {

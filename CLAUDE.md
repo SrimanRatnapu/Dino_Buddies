@@ -198,6 +198,11 @@ Times are relative to kickoff. Replace with real clock times once demos are sche
   - The app first asks "Hey, the … is an exhibit you visited 12 minutes ago. Would you like to know more about it?" and listens for yes or no (Yes and No buttons on screen too, the only way with App voice off). On yes it calls `/api/describe` in `detailed` mode with the saved photo and everything said before as `previous`, so Gemini adds new detail. Follow-up questions then stay on that exhibit, without changing its visit time.
   - The visited list items are now buttons with "N minutes ago". Aiming's "already heard about" line now says how long ago. "New visit" clears the details too.
 
+- **2026-11-15, A (Sriman: voice switched from phone to AI mid-session, and the style instruction was read aloud): additive, still v1.3.**
+  - The voice model is now sent only the text (`prompts/speak.ts`): Gemini TTS read the style instruction out loud. Tone comes from `SPEAK_VOICE`.
+  - New `GET /api/speak` returns `{ "voice": "gemini:Kore" | "cloud-tts" | null }` (no secrets) so the client can key saved audio by voice.
+  - Client: every line uses the AI voice when there is one (short lines wait up to 4 s, answers 10 s, before falling back), fixed phrases are fetched on page load before the first tap, and fetched audio is saved in Cache Storage (`wd-voice-v1`) across visits.
+
 ## Backup ideas (only if this stalls)
 - Wildlife Rehab Triage: identify an injured animal, give "intervene or leave it" guidance, and look up the nearest rehabber with Maps.
 - FossilID: Gemini vision identification of possible fossil finds with a "report it, don't dig it" flow.

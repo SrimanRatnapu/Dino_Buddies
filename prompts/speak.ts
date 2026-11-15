@@ -1,11 +1,9 @@
 /**
- * Style for the Gemini voice (/api/speak). Gemini text-to-speech follows a
- * short spoken-style instruction before the text. Keep the instruction short
- * and end it with a colon, so only the text after it is read aloud.
+ * What the Gemini voice is sent. Only the words to speak: Gemini text-to-speech
+ * models can read a style instruction ("Read this aloud in a warm voice...")
+ * out loud as part of the text, so the tone comes from the chosen voice
+ * (SPEAK_VOICE) instead of a prompt.
  */
-export const SPEAK_STYLE =
-  "Read this aloud in a warm, calm and clear voice, like a friendly museum guide talking to one visitor, at an easy pace";
-
 export function speakPrompt(text: string): string {
-  return `${SPEAK_STYLE}:\n\n${text}`;
+  return text;
 }

@@ -33,24 +33,31 @@ export interface GuideResult {
   lastWasSeen: boolean;
 }
 
+const MOVES: Record<AimMove, string> = {
+  left: "Turn a little to the left.",
+  right: "Turn a little to the right.",
+  up: "Tilt the phone up.",
+  down: "Tilt the phone down.",
+  back: "Step back a little.",
+  closer: "Move a little closer.",
+  none: "Hold still.",
+};
+const GOT_IT = "Got it.";
+const HOLD_IT = "Good. Hold still.";
+const SEARCHING = "I don't see an exhibit yet. Turn slowly.";
+
+/** Every fixed aiming line, so the AI voice can be prepared for them ahead of time. */
+export const AIM_LINES = [...Object.values(MOVES), GOT_IT, HOLD_IT, SEARCHING];
+
 /** Spoken instruction for an aiming reply. */
 export function instructionFor(aim: AimResponse, readyCount: number): string {
   if (aim.already_seen) {
     const what = aim.subject ? `the ${aim.subject.replace(/^(the|a|an)\s+/i, "")}` : "an exhibit";
     return `That's ${what} you already heard about. Turn to find something new, or tap the screen to hear it again.`;
   }
-  if (aim.status === "ready") return readyCount >= READY_STREAK ? "Got it." : "Good. Hold still.";
-  if (aim.status === "searching") return "I don't see an exhibit yet. Turn slowly.";
-  const moves: Record<AimMove, string> = {
-    left: "Turn a little to the left.",
-    right: "Turn a little to the right.",
-    up: "Tilt the phone up.",
-    down: "Tilt the phone down.",
-    back: "Step back a little.",
-    closer: "Move a little closer.",
-    none: "Hold still.",
-  };
-  return moves[aim.move];
+  if (aim.status === "ready") return readyCount >= READY_STREAK ? GOT_IT : HOLD_IT;
+  if (aim.status === "searching") return SEARCHING;
+  return MOVES[aim.move];
 }
 
 /** AbortSignal.any, with a fallback for older Safari. */

@@ -12,7 +12,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import type { AimMove, DescribeRequest, DescribeSuccess } from "@/shared/contract";
-import { guideToPhoto, instructionFor } from "./aimGuide";
+import { AIM_LINES, guideToPhoto, instructionFor } from "./aimGuide";
 import { CameraError, cameraSupportError, captureOnce, fileToBase64 } from "./camera";
 import { cue, unlockCues } from "./cues";
 import { clientMockEnabled, describeImage } from "./describeClient";
@@ -26,7 +26,7 @@ import {
   recognitionSupported,
   type VoiceCommand,
 } from "./listen";
-import { speak, stopSpeaking, unlockSpeech } from "./speech";
+import { prepareVoice, speak, stopSpeaking, unlockSpeech } from "./speech";
 import { spokenText, type ResultKind } from "./spokenText";
 import {
   addSaid,
@@ -231,6 +231,19 @@ export default function App() {
     detailsRef.current = readDetails();
     setDetails(detailsRef.current);
     setVisited(visitedRef.current);
+    // Get the AI voice ready for the fixed lines before the first tap, so the
+    // greeting and cues already sound like the answers (saved between visits).
+    void prepareVoice([
+      readPref("greeted") === "1" ? TOUR_START : FIRST_TOUR_START,
+      WAIT_CUES.describe,
+      "Hold still.",
+      ...AIM_LINES,
+      "Ask me about it, or say next.",
+      "Let's find the next one.",
+      "Still looking.",
+      WAIT_CUES.answer,
+      WAIT_CUES.more,
+    ]);
     if (!recognitionSupported()) setTyping(true);
     const unsupported = cameraSupportError();
     if (unsupported) {

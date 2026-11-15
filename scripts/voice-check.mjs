@@ -61,7 +61,7 @@ for (const model of models) {
   try {
     const res = await ai.models.generateContent({
       model,
-      contents: [{ role: "user", parts: [{ text: `Read this aloud in a warm, calm voice:\n\n${TEXT}` }] }],
+      contents: [{ role: "user", parts: [{ text: TEXT }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },

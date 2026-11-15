@@ -1,6 +1,6 @@
 import { synthesize, TtsError, ttsKey } from "@/lib/tts/google";
 import { synthesizeGemini } from "@/lib/tts/gemini";
-import { geminiConfigured, SPEAK_ENGINE } from "@/lib/gemini/config";
+import { geminiConfigured, SPEAK_ENGINE, SPEAK_VOICE } from "@/lib/gemini/config";
 import { mapError } from "@/lib/gemini/client";
 import { errorJson, rateLimitedJson } from "@/lib/http/errors";
 import { rateLimit } from "@/lib/http/rateLimit";
@@ -22,6 +22,17 @@ function audioResponse(audio: Buffer, contentType: string, engine: string) {
       "X-Voice": engine,
     },
   });
+}
+
+/** Which voice the server will use, so the app can key its saved audio by it. No secrets. */
+function voiceId(): string | null {
+  if (SPEAK_ENGINE !== "cloud" && geminiConfigured()) return `gemini:${SPEAK_VOICE}`;
+  return ttsKey() ? "cloud-tts" : null;
+}
+
+/** GET -> { voice }: the active voice id, or null when there is no AI voice. */
+export function GET() {
+  return Response.json({ voice: voiceId() }, { headers: { "Cache-Control": "no-store" } });
 }
 
 /**
