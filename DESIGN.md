@@ -47,9 +47,10 @@ Targets: secondary buttons at least 76px tall. The main button takes at least 30
 - Saying "describe" when the camera is off can't open the photo picker (browsers require a tap), so the app says so and points to the Describe button.
 
 ## Tour ("I am here")
-- Say **"I am here"** (also "I'm here", "start tour", "show me around"), press **I am here**, or press **I** on a keyboard.
+- **The default, hands-free flow.** One tap anywhere on the big button starts it (the very first time with a short spoken introduction); after that the person never has to touch the phone. Browsers need that one tap before an app can use the camera, microphone and speaker. Also: say "I am here" (or "I'm here", "start tour", "show me around") in a conversation, or press **A** or **I** on a keyboard.
+- **Ask a question** (the wide bottom button, or **Q**) starts the plain spoken conversation instead, for asking about whatever the phone points at without the tour. With no usable camera, the big button starts that conversation too.
 - Each round: aim at the nearest exhibit not heard yet (same guidance as Help me aim), take one photo, describe it, then "Ask me about it, or say next." Questions, "more" and "repeat" are answered (up to 4), then silence or "next" moves on: "Let's find the next one."
-- Nothing new in view for a whole round (25 s): "I don't see anything new here. Walk a few steps or turn around, and I'll look again." A second empty round ends the tour: "Walk somewhere else, then say I am here."
+- Nothing new in view for a whole round (25 s): "I don't see anything new here. Walk a few steps or turn around, and I'll look again." A second empty round ends the tour: "Walk somewhere else, then tap the screen."
 - Ending: say "end tour", "stop" or "pause", press **End tour** (the one wide button while touring) or Esc, or tap the screen between exhibits. A tap while it's speaking only skips the speech; a tap while aiming takes the photo now.
 - With App voice off, or no microphone, the tour does one exhibit per press so it never talks over the screen reader.
 - The camera is on only while aiming and taking each photo, never while describing or listening.

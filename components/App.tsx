@@ -54,8 +54,14 @@ const WAIT_CUES: Record<ResultKind, string> = {
   answer: "Let me check.",
 };
 
+/** Spoken when "Ask a question" starts the plain conversation (no tour) for the first time. */
 const FIRST_GREETING =
   "Hi, I'm Wildlife Described. Point your phone at an exhibit and say: what's this. Say help any time.";
+/** The very first tap ever: the tour starts, so explain it once. */
+const FIRST_TOUR_START =
+  "Hi, I'm Wildlife Described. Hold your phone up in front of you at chest height and turn slowly. " +
+  "I'll lead you to each exhibit and describe it. After each one, ask me anything, or stay quiet and I'll find the next. " +
+  "Say end tour to stop.";
 const GREETING = "I'm listening.";
 const ASLEEP_LINE = "I'll wait. Tap the screen when you need me.";
 
@@ -65,8 +71,7 @@ const MAX_EMPTY_ROUNDS = 2;
 const TOUR_WALK_MS = 4000;
 /** Tour: questions about one exhibit before moving on anyway. */
 const MAX_TOUR_QUESTIONS = 4;
-const TOUR_START =
-  "Okay, let's explore. Hold the phone up in front of you at chest height and turn slowly. I'll lead you to the nearest exhibit.";
+const TOUR_START = "Let's explore. Hold the phone up in front of you and turn slowly.";
 
 /** How one round of aiming ended. */
 type GuideOutcome = "described" | "nothing-new" | "stopped" | "failed";
@@ -309,7 +314,7 @@ export default function App() {
 
   async function readVisitedAloud() {
     const v = visitedRef.current;
-    if (!v.length) return say("You haven't visited any exhibits yet. Say I am here to start.");
+    if (!v.length) return say("You haven't visited any exhibits yet. Tap the screen to start the tour.");
     const count = v.length === 1 ? "one exhibit" : `${v.length} exhibits`;
     await say(`You've visited ${count}: ${spokenList(v)}.`);
   }
@@ -472,9 +477,9 @@ export default function App() {
    * a short window for questions, then guide to the next one. Repeats until the
    * person says stop, pause or end tour, taps Cancel, or nothing new is in reach.
    */
-  async function tour(fromTap: boolean) {
+  async function tour(fromTap: boolean, opening: string = TOUR_START) {
     if (cameraProblemRef.current) {
-      await say(`${cameraProblemRef.current} The tour needs the camera. Say what's this to describe a photo instead.`);
+      await say(`${cameraProblemRef.current} The tour needs the camera. Tap Choose a photo to describe a picture instead.`);
       return;
     }
     if (touringRef.current) return;
@@ -483,17 +488,17 @@ export default function App() {
     setTouring(true);
     let empty = 0;
     try {
-      await say(TOUR_START);
+      await say(opening);
       while (tourRef.current === my) {
         const outcome = await guide(fromTap, { tour: true });
         if (tourRef.current !== my || outcome === "stopped") break;
         if (outcome === "failed") {
-          if (!cameraProblemRef.current) await say("The tour has stopped. Say I am here to try again.");
+          if (!cameraProblemRef.current) await say("The tour has stopped. Tap the screen to try again.");
           break;
         }
         if (outcome === "nothing-new") {
           if (++empty >= MAX_EMPTY_ROUNDS) {
-            await say("I can't find anything new from here. Walk somewhere else, then say I am here.");
+            await say("I can't find anything new from here. Walk somewhere else, then tap the screen.");
             break;
           }
           await say("I don't see anything new here. Walk a few steps or turn around, and I'll look again.");
@@ -626,10 +631,11 @@ export default function App() {
     listenRef.current = ctrl;
     go("listening");
     cue.listen();
-    // Let the start tone finish so the microphone doesn't pick it up.
-    await new Promise((r) => setTimeout(r, 300));
-    if (ctrl.signal.aborted) return { kind: "stopped" };
     try {
+      // Let the start tone finish so the microphone doesn't pick it up. Inside the
+      // try, so a tap during this wait still resets the listening state below.
+      await new Promise((r) => setTimeout(r, 300));
+      if (ctrl.signal.aborted) return { kind: "stopped" };
       const text = await listenOnce(ctrl.signal);
       return { kind: "text", text };
     } catch (err) {
@@ -732,7 +738,7 @@ export default function App() {
       cue.cancel();
       if (touringRef.current) {
         endTour();
-        void say("Tour paused. Say I am here to carry on.");
+        void say("Tour paused. Tap the screen to carry on.");
       } else {
         void say("Paused. Tap the screen to talk.");
       }
@@ -746,7 +752,7 @@ export default function App() {
         endConversation();
         endTour();
         cue.cancel();
-        void say("Tour paused. Say I am here to carry on.");
+        void say("Tour paused. Tap the screen to carry on.");
       }
       return;
     }
@@ -757,8 +763,23 @@ export default function App() {
       return;
     }
     quiet();
+    // The default, hands-free flow: one tap starts the tour. Without a camera,
+    // fall back to the spoken conversation (photos come from the picker then).
+    if (cameraProblemRef.current) {
+      void startConversation();
+      return;
+    }
     const first = readPref("greeted") !== "1";
     writePref("greeted", "1");
+    void tour(true, first ? FIRST_TOUR_START : TOUR_START);
+  }
+
+  /** "Ask a question": the plain conversation, listening for a command, without the tour. */
+  function startConversation() {
+    unlock();
+    quiet();
+    const first = readPref("greetedTalk") !== "1";
+    writePref("greetedTalk", "1");
     void converse(first ? FIRST_GREETING : GREETING);
   }
 
@@ -838,8 +859,8 @@ export default function App() {
     quiet();
     cue.cancel();
   }
-  const handlers = useRef({ onTalkButton, cancel, act, stopAll });
-  handlers.current = { onTalkButton, cancel, act, stopAll };
+  const handlers = useRef({ onTalkButton, cancel, act, stopAll, startConversation });
+  handlers.current = { onTalkButton, cancel, act, stopAll, startConversation };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -861,6 +882,7 @@ export default function App() {
       else if (k === "d") void h.act({ kind: "describe" });
       else if (k === "g") void h.act({ kind: "guide" });
       else if (k === "i") void h.act({ kind: "tour" });
+      else if (k === "q") h.startConversation();
       else if (k === "m") void h.act({ kind: "more" });
       else if (k === "r") void h.act({ kind: "repeat" });
       else if (k === "a") h.onTalkButton();
@@ -882,7 +904,7 @@ export default function App() {
   const STATUS: Record<string, { word: string; hint: string; tap: string }> = {
     idle: touring
       ? { word: "On tour", hint: "Finding the next exhibit. Tap to pause the tour.", tap: "Tap to pause the tour" }
-      : { word: "Tap to talk", hint: "Then say “I am here”, “what's this”, or ask a question.", tap: "" },
+      : { word: "Tap to start", hint: "Hold the phone up. I'll lead you to each exhibit and describe it.", tap: "Starts the tour" },
     listening: touring
       ? { word: "Listening", hint: "Ask about this exhibit, or say “next” or “end tour”.", tap: "Tap to pause the tour" }
       : { word: "Listening", hint: "Say “what's this”, ask a question, or say “pause”.", tap: "Tap to pause listening" },
@@ -1068,15 +1090,9 @@ export default function App() {
               </button>
             )}
             {!cameraProblem && (
-              <button
-                type="button"
-                className="btn btn-wide"
-                onClick={() => void act({ kind: "tour" })}
-                aria-keyshortcuts="I"
-                aria-describedby="tour-hint"
-              >
-                <WalkIcon />
-                I am here
+              <button type="button" className="btn btn-wide" onClick={startConversation} aria-keyshortcuts="Q">
+                <MicIcon />
+                Ask a question
               </button>
             )}
           </>
@@ -1093,9 +1109,6 @@ export default function App() {
         aria-hidden="true"
         onChange={onFile}
       />
-      <p className="sr-only" id="tour-hint">
-        Starts a tour: I lead you to the nearest exhibit, describe it, then lead you to the next one.
-      </p>
       <p className="sr-only" role="status" aria-live="polite">
         {status}
       </p>
@@ -1150,15 +1163,6 @@ function PlusIcon() {
     </Svg>
   );
 }
-function WalkIcon() {
-  return (
-    <Svg>
-      <circle cx="13" cy="4.5" r="2" />
-      <path d="M9 21l2.5-6 2.5 2.5V21M8 12l2.5-4.5 3 1 2.5 3.5M10.5 7.5L9 12" />
-    </Svg>
-  );
-}
-
 function TargetIcon() {
   return (
     <Svg>
