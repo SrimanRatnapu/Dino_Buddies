@@ -59,6 +59,18 @@ const FIRST_GREETING =
 const GREETING = "I'm listening.";
 const ASLEEP_LINE = "I'll wait. Tap the screen when you need me.";
 
+/** Tour ("I am here"): rounds in a row with nothing new before the tour pauses itself. */
+const MAX_EMPTY_ROUNDS = 2;
+/** Tour: time to walk a few steps before looking again. */
+const TOUR_WALK_MS = 4000;
+/** Tour: questions about one exhibit before moving on anyway. */
+const MAX_TOUR_QUESTIONS = 4;
+const TOUR_START =
+  "Okay, let's explore. Hold the phone up in front of you at chest height and turn slowly. I'll lead you to the nearest exhibit.";
+
+/** How one round of aiming ended. */
+type GuideOutcome = "described" | "nothing-new" | "stopped" | "failed";
+
 /** Don't repeat the same aiming instruction more often than this. */
 const REPEAT_INSTRUCTION_MS = 4000;
 /** Silent turns in a row before the app stops listening by itself. */
@@ -118,6 +130,8 @@ export default function App() {
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [talking, setTalking] = useState(false);
+  /** A tour ("I am here") is running: guide, describe, short pause for questions, repeat. */
+  const [touring, setTouring] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [heard, setHeard] = useState("");
   const [shown, setShown] = useState<Shown | null>(null);
@@ -149,6 +163,8 @@ export default function App() {
   /** Bumped to end the running conversation loop. */
   const loopRef = useRef(0);
   const talkingRef = useRef(false);
+  const tourRef = useRef(0);
+  const touringRef = useRef(false);
   const phaseRef = useRef<Phase>("idle");
   const speakingRef = useRef(false);
 
@@ -174,6 +190,7 @@ export default function App() {
     }
     // Never leave the camera or microphone on if the page goes away.
     return () => {
+      tourRef.current++;
       loopRef.current++;
       captureRef.current?.abort();
       guideRef.current?.abort();
@@ -335,11 +352,15 @@ export default function App() {
    * "Help me aim": keeps the camera on and speaks aiming instructions until the
    * exhibit is fully in view, then takes one photo and describes it.
    */
-  async function guide(fromTap: boolean) {
-    if (cameraProblemRef.current) return describe(fromTap);
-    if (captureRef.current || guideRef.current) return;
+  async function guide(fromTap: boolean, opts: { tour?: boolean } = {}): Promise<GuideOutcome> {
+    if (cameraProblemRef.current) {
+      if (opts.tour) return "failed";
+      await describe(fromTap);
+      return "described";
+    }
+    if (captureRef.current || guideRef.current) return "stopped";
     const video = videoRef.current;
-    if (!video) return;
+    if (!video) return "stopped";
     const stopCtrl = new AbortController();
     const takeNow = new AbortController();
     guideRef.current = stopCtrl;
@@ -348,7 +369,8 @@ export default function App() {
     showError("");
     setAimView({ text: "Hold the phone up in front of you.", move: "none", ready: false });
     go("guiding");
-    void say("Hold the phone up in front of you, and I'll help you aim. Tap the screen to take the photo yourself.");
+    // On a tour the tour itself says what's happening.
+    if (!opts.tour) void say("Hold the phone up in front of you, and I'll help you aim. Tap the screen to take the photo yourself.");
     try {
       const result = await guideToPhoto(video, stopCtrl.signal, takeNow.signal, (aim, readyCount) => {
         const text = instructionFor(aim, readyCount);
@@ -363,7 +385,7 @@ export default function App() {
           void say(text);
         }
       }, [...seenRef.current]);
-      if (stopCtrl.signal.aborted) return;
+      if (stopCtrl.signal.aborted) return "stopped";
       if (!result) {
         // The camera stopped sending pictures (for example, another app took it).
         throw new CameraError("The camera stopped before I could take the photo.");
@@ -372,6 +394,8 @@ export default function App() {
       if (guideRef.current === stopCtrl) guideRef.current = null;
       if (takeNowRef.current === takeNow) takeNowRef.current = null;
       setAimView(null);
+      // On a tour, a timeout means nothing new is in reach: don't describe a random or familiar view.
+      if (opts.tour && result.how === "timeout") return "nothing-new";
       cue.capture();
       const lead =
         result.how === "timeout" && result.lastWasSeen
@@ -382,15 +406,102 @@ export default function App() {
             ? "Aiming help isn't working right now, so I took the photo."
             : undefined;
       await sendImage(result.frame, lead);
+      // Without aiming help a tour would just photograph the same spot over and over.
+      return opts.tour && result.how === "unavailable" ? "failed" : "described";
     } catch (err) {
-      if (stopCtrl.signal.aborted) return;
+      if (stopCtrl.signal.aborted) return "stopped";
       await cameraFailed(err);
+      return "failed";
     } finally {
       if (guideRef.current === stopCtrl) guideRef.current = null;
       if (takeNowRef.current === takeNow) takeNowRef.current = null;
       setAimView(null);
       if (phaseRef.current === "guiding") go("idle");
     }
+  }
+
+  /* ---------------------------------------------------------------- the tour ("I am here") */
+
+  function endTour() {
+    tourRef.current++;
+    touringRef.current = false;
+    setTouring(false);
+  }
+
+  /** Waits, but stops early if the tour ends. */
+  async function tourWait(ms: number, my: number) {
+    const until = Date.now() + ms;
+    while (tourRef.current === my && Date.now() < until) await new Promise((r) => setTimeout(r, 200));
+  }
+
+  /**
+   * "I am here": guide to the nearest exhibit not heard yet, describe it, leave
+   * a short window for questions, then guide to the next one. Repeats until the
+   * person says stop, pause or end tour, taps Cancel, or nothing new is in reach.
+   */
+  async function tour(fromTap: boolean) {
+    if (cameraProblemRef.current) {
+      await say(`${cameraProblemRef.current} The tour needs the camera. Say what's this to describe a photo instead.`);
+      return;
+    }
+    if (touringRef.current) return;
+    const my = ++tourRef.current;
+    touringRef.current = true;
+    setTouring(true);
+    let empty = 0;
+    try {
+      await say(TOUR_START);
+      while (tourRef.current === my) {
+        const outcome = await guide(fromTap, { tour: true });
+        if (tourRef.current !== my || outcome === "stopped") break;
+        if (outcome === "failed") {
+          if (!cameraProblemRef.current) await say("The tour has stopped. Say I am here to try again.");
+          break;
+        }
+        if (outcome === "nothing-new") {
+          if (++empty >= MAX_EMPTY_ROUNDS) {
+            await say("I can't find anything new from here. Walk somewhere else, then say I am here.");
+            break;
+          }
+          await say("I don't see anything new here. Walk a few steps or turn around, and I'll look again.");
+          await tourWait(TOUR_WALK_MS, my);
+          continue;
+        }
+        empty = 0;
+        if ((await tourBreak(my)) === "end") break;
+        if (tourRef.current !== my) break;
+        await say("Let's find the next one.");
+      }
+    } finally {
+      if (tourRef.current === my) endTour();
+    }
+  }
+
+  /** After each description: a short window to ask about it before moving on. */
+  async function tourBreak(my: number): Promise<"next" | "end"> {
+    if (!voiceOnRef.current || !recognitionSupported()) {
+      // A screen reader is reading the answer, or there's no microphone: one exhibit per press.
+      await say("Press I am here again for the next exhibit.");
+      return "end";
+    }
+    await say("Ask me about it, or say next.");
+    for (let turn = 0; turn < MAX_TOUR_QUESTIONS && tourRef.current === my; turn++) {
+      const h = await hear();
+      if (tourRef.current !== my || h.kind === "stopped" || h.kind === "unavailable") return "end";
+      if (h.kind === "silence") return "next";
+      setHeard(h.text);
+      const cmd = parseCommand(h.text);
+      if (cmd.kind === "stop" || cmd.kind === "pause") {
+        cue.cancel();
+        endConversation();
+        await say("Tour ended. Tap the screen when you need me.");
+        return "end";
+      }
+      // "next", "what's this", "I am here" or "help me aim": move on to the next exhibit.
+      if (cmd.kind === "describe" || cmd.kind === "tour" || cmd.kind === "guide") return "next";
+      await perform(cmd, false);
+    }
+    return "next";
   }
 
   async function more() {
@@ -449,6 +560,8 @@ export default function App() {
         return describe(fromTap);
       case "guide":
         return guide(fromTap);
+      case "tour":
+        return tour(fromTap);
       case "more":
         return more();
       case "repeat":
@@ -578,7 +691,24 @@ export default function App() {
       endConversation();
       quiet();
       cue.cancel();
-      void say("Paused. Tap the screen to talk.");
+      if (touringRef.current) {
+        endTour();
+        void say("Tour paused. Say I am here to carry on.");
+      } else {
+        void say("Paused. Tap the screen to talk.");
+      }
+      return;
+    }
+    if (touringRef.current) {
+      // On a tour a tap skips the current speech; between exhibits it pauses the tour.
+      const wasSpeaking = speakingRef.current;
+      quiet();
+      if (!wasSpeaking) {
+        endConversation();
+        endTour();
+        cue.cancel();
+        void say("Tour paused. Say I am here to carry on.");
+      }
       return;
     }
     if (speakingRef.current) {
@@ -595,6 +725,8 @@ export default function App() {
 
   function cancel() {
     unlock();
+    const wasTouring = touringRef.current;
+    endTour();
     endConversation();
     captureRef.current?.abort();
     captureRef.current = null;
@@ -605,7 +737,7 @@ export default function App() {
     quiet();
     cue.cancel();
     go("idle");
-    void say("Cancelled. Tap the screen to talk.");
+    void say(wasTouring ? "Tour ended. Tap the screen to talk." : "Cancelled. Tap the screen to talk.");
   }
 
   async function onFile(e: ChangeEvent<HTMLInputElement>) {
@@ -662,6 +794,7 @@ export default function App() {
   // Keyboard: Space or Enter on the big button, Escape anywhere, and letter
   // shortcuts while focus is inside the app (WCAG 2.1.4: only on focus).
   function stopAll() {
+    endTour();
     endConversation();
     quiet();
     cue.cancel();
@@ -688,6 +821,7 @@ export default function App() {
       else if (busy) return;
       else if (k === "d") void h.act({ kind: "describe" });
       else if (k === "g") void h.act({ kind: "guide" });
+      else if (k === "i") void h.act({ kind: "tour" });
       else if (k === "m") void h.act({ kind: "more" });
       else if (k === "r") void h.act({ kind: "repeat" });
       else if (k === "a") h.onTalkButton();
@@ -707,8 +841,12 @@ export default function App() {
   // The button's spoken name starts with its visible word (WCAG 2.5.3, so voice control can say it),
   // then says what a tap does now.
   const STATUS: Record<string, { word: string; hint: string; tap: string }> = {
-    idle: { word: "Tap to talk", hint: "Then say “what's this”, “help me aim”, or ask a question.", tap: "" },
-    listening: { word: "Listening", hint: "Say “what's this”, ask a question, or say “pause”.", tap: "Tap to pause listening" },
+    idle: touring
+      ? { word: "On tour", hint: "Finding the next exhibit. Tap to pause the tour.", tap: "Tap to pause the tour" }
+      : { word: "Tap to talk", hint: "Then say “I am here”, “what's this”, or ask a question.", tap: "" },
+    listening: touring
+      ? { word: "Listening", hint: "Ask about this exhibit, or say “next” or “end tour”.", tap: "Tap to pause the tour" }
+      : { word: "Listening", hint: "Say “what's this”, ask a question, or say “pause”.", tap: "Tap to pause listening" },
     speaking: { word: "Speaking", hint: "Tap anywhere to interrupt.", tap: "Tap to interrupt and talk" },
     capturing: { word: "Hold still", hint: "Taking one photo.", tap: "" },
     looking: { word: "Looking", hint: "Gemini is reading the photo.", tap: "" },
@@ -726,6 +864,7 @@ export default function App() {
       <header className="topbar">
         <h1 className="brand">{APP_NAME}</h1>
         {mock && <span className="badge">Demo data</span>}
+        {touring && <span className="badge">On tour</span>}
         <button
           type="button"
           className="toggle"
@@ -846,7 +985,11 @@ export default function App() {
       </main>
 
       <nav className="controls" aria-label="Without speaking">
-        {busy ? (
+        {touring ? (
+          <button type="button" className="btn btn-wide" onClick={cancel} aria-keyshortcuts="Escape">
+            End tour
+          </button>
+        ) : busy ? (
           <button type="button" className="btn btn-wide" onClick={cancel} aria-keyshortcuts="Escape">
             Cancel
           </button>
@@ -872,6 +1015,18 @@ export default function App() {
                 Help me aim
               </button>
             )}
+            {!cameraProblem && (
+              <button
+                type="button"
+                className="btn btn-wide"
+                onClick={() => void act({ kind: "tour" })}
+                aria-keyshortcuts="I"
+                aria-describedby="tour-hint"
+              >
+                <WalkIcon />
+                I am here
+              </button>
+            )}
           </>
         )}
       </nav>
@@ -886,6 +1041,9 @@ export default function App() {
         aria-hidden="true"
         onChange={onFile}
       />
+      <p className="sr-only" id="tour-hint">
+        Starts a tour: I lead you to the nearest exhibit, describe it, then lead you to the next one.
+      </p>
       <p className="sr-only" role="status" aria-live="polite">
         {status}
       </p>
@@ -940,6 +1098,15 @@ function PlusIcon() {
     </Svg>
   );
 }
+function WalkIcon() {
+  return (
+    <Svg>
+      <circle cx="13" cy="4.5" r="2" />
+      <path d="M9 21l2.5-6 2.5 2.5V21M8 12l2.5-4.5 3 1 2.5 3.5M10.5 7.5L9 12" />
+    </Svg>
+  );
+}
+
 function TargetIcon() {
   return (
     <Svg>

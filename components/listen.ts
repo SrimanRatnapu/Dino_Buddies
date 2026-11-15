@@ -109,11 +109,13 @@ export type VoiceCommand =
   | { kind: "slower" }
   | { kind: "faster" }
   | { kind: "guide" }
+  | { kind: "tour" }
   | { kind: "question"; text: string };
 
 /** What the app says when asked for help. Short enough to remember. */
 export const HELP_TEXT =
-  "Point your phone at an exhibit and say: what's this. " +
+  "Say I am here, and I'll lead you from exhibit to exhibit. " +
+  "Or point your phone at an exhibit and say: what's this. " +
   "Say help me aim, and I'll tell you which way to turn first. " +
   "After a description, ask any question, or say tell me more, or repeat. " +
   "Say slower or faster to change my voice. Say pause when you're done, and tap the screen to wake me.";
@@ -128,7 +130,7 @@ export function parseCommand(heard: string): VoiceCommand {
     .trim();
   if (/^(stop|quiet|be quiet|cancel|stop talking|shh|hush)$/.test(t)) return { kind: "stop" };
   if (
-    /^(pause|goodbye|bye|bye bye|stop listening|that's all|thats all|that is all|thanks|thank you|go to sleep|sleep|never mind|nevermind|i'm done|im done)$/.test(
+    /^(pause|goodbye|bye|bye bye|stop listening|that's all|thats all|that is all|thanks|thank you|go to sleep|sleep|never mind|nevermind|i'm done|im done|(end|stop|exit|finish) (the )?tour|pause (the )?tour)$/.test(
       t,
     )
   )
@@ -139,6 +141,12 @@ export function parseCommand(heard: string): VoiceCommand {
   if (/^(repeat|again|repeat that|say (that|it) again|what did you say|pardon|sorry)$/.test(t)) return { kind: "repeat" };
   if (/^(more|tell me more|more details?|go on|keep going|and|what else)$/.test(t)) return { kind: "more" };
   if (/^(guide me|guide|help me aim|aim|help me point|where should i point|help me find it)$/.test(t)) return { kind: "guide" };
+  if (
+    /^(i am here|i'm here|im here|we're here|were here|we are here|start (the )?tour|tour|tour mode|explore|let's explore|lets explore|show me around|take me around|start exploring|what's around me|whats around me|what is around me)$/.test(
+      t,
+    )
+  )
+    return { kind: "tour" };
   if (
     /^(describe|describe (this|it|that)|look|look at (this|that)|what is (this|that|it)|whats (this|that)|what's (this|that)|what am i looking at|what do you see|what can you see|what's in front of me|whats in front of me|what is in front of me|new photo|take a (photo|picture)|take another( one)?|another one|next|next one)$/.test(
       t,

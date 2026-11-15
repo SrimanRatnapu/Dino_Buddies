@@ -46,6 +46,14 @@ Targets: secondary buttons at least 76px tall. The main button takes at least 30
 - Keys (Bluetooth keyboards and switch devices): **D** describe, **G** guide me, **T** take it now (while guiding), **A** ask, **R** repeat, **M** more, **S** stop, **Esc** cancel or stop. Exposed with `aria-keyshortcuts`. Letter keys work only while focus is on the result or the action buttons (WCAG 2.1.4, character key shortcuts), so a stray key or speech input elsewhere can't trigger them. Esc works anywhere. After each result, focus lands on the result title, so the keys work straight away.
 - Saying "describe" when the camera is off can't open the photo picker (browsers require a tap), so the app says so and points to the Describe button.
 
+## Tour ("I am here")
+- Say **"I am here"** (also "I'm here", "start tour", "show me around"), press **I am here**, or press **I** on a keyboard.
+- Each round: aim at the nearest exhibit not heard yet (same guidance as Help me aim), take one photo, describe it, then "Ask me about it, or say next." Questions, "more" and "repeat" are answered (up to 4), then silence or "next" moves on: "Let's find the next one."
+- Nothing new in view for a whole round (25 s): "I don't see anything new here. Walk a few steps or turn around, and I'll look again." A second empty round ends the tour: "Walk somewhere else, then say I am here."
+- Ending: say "end tour", "stop" or "pause", press **End tour** (the one wide button while touring) or Esc, or tap the screen between exhibits. A tap while it's speaking only skips the speech; a tap while aiming takes the photo now.
+- With App voice off, or no microphone, the tour does one exhibit per press so it never talks over the screen reader.
+- The camera is on only while aiming and taking each photo, never while describing or listening.
+
 ## Visit memory
 - The app remembers the last 8 exhibits it described in this browser tab (cleared when the tab closes) and tells Gemini about them.
 - **Help me aim** steers toward something the person hasn't heard about yet. If only a familiar exhibit is in view, it says "That's the … you already heard about. Turn to find something new, or tap the screen to hear it again" (repeated at most every 12 s) and doesn't take the photo on its own. A tap still takes it.
