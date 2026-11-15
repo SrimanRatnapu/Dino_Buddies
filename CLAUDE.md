@@ -183,6 +183,11 @@ Times are relative to kickoff. Replace with real clock times once demos are sche
   - Client: answers are sent in pieces of about 240 characters so the first plays quickly; every fetched clip is cached by text, so Repeat and common short phrases play instantly; short phrases play in the browser voice the first time while the AI version is fetched. "Slower" and "faster" now apply to the AI voice (playback rate). Any failure still falls back to `speechSynthesis`.
   - `/api/health` shows the active `voice`.
 
+- **2026-11-15, A (Sriman asked for a visited-exhibits list the AI references): no shape change, still v1.3.**
+  - The client now also sends `seen` (the 8 most recent visited exhibits) on follow-up questions, so answers can compare with earlier exhibits. The server already accepted it; `followUpUserPrompt` now uses it.
+  - On a first look, the describe prompt shows the list in order and asks Gemini to open with one short link to an earlier exhibit when there is a real connection, besides naming repeats.
+  - UI: an "Exhibits visited" list under the answer (sessionStorage key `visited`, up to 30), and voice commands "what have I seen" and "new visit".
+
 ## Backup ideas (only if this stalls)
 - Wildlife Rehab Triage: identify an injured animal, give "intervene or leave it" guidance, and look up the nearest rehabber with Maps.
 - FossilID: Gemini vision identification of possible fossil finds with a "report it, don't dig it" flow.

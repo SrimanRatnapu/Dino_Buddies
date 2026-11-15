@@ -43,7 +43,7 @@ export async function describe(req: ParsedRequest): Promise<DescribeResult> {
   if (req.image) parts.push({ inlineData: { mimeType: req.image.mimeType, data: req.image.data } });
   parts.push({
     text: req.question
-      ? followUpUserPrompt(req.question, req.previous, req.mode)
+      ? followUpUserPrompt(req.question, req.previous, req.mode, req.seen)
       : describeUserPrompt(req.mode, req.previous, req.seen),
   });
 

@@ -110,6 +110,8 @@ export type VoiceCommand =
   | { kind: "faster" }
   | { kind: "guide" }
   | { kind: "tour" }
+  | { kind: "visited" }
+  | { kind: "newVisit" }
   | { kind: "question"; text: string };
 
 /** What the app says when asked for help. Short enough to remember. */
@@ -118,6 +120,7 @@ export const HELP_TEXT =
   "Or point your phone at an exhibit and say: what's this. " +
   "Say help me aim, and I'll tell you which way to turn first. " +
   "After a description, ask any question, or say tell me more, or repeat. " +
+  "Say what have I seen to hear the exhibits you've visited, or new visit to clear the list. " +
   "Say slower or faster to change my voice. Say pause when you're done, and tap the screen to wake me.";
 
 /** Maps what was heard to a command. Anything unrecognized is a follow-up question. */
@@ -136,6 +139,14 @@ export function parseCommand(heard: string): VoiceCommand {
   )
     return { kind: "pause" };
   if (/^(help|what can i say|what can you do|commands|how does this work|options)$/.test(t)) return { kind: "help" };
+  if (
+    /^(what have (i|we) (seen|visited)( so far)?|what did (i|we) see|where have (i|we) been|(list|read)( me)?( my| the)? (exhibits|list)|my list|what's on my list|whats on my list|what is on my list|which exhibits have (i|we) (seen|visited))$/.test(
+      t,
+    )
+  )
+    return { kind: "visited" };
+  if (/^(new visit|start a new visit|start over|clear (my |the )?list|forget (everything|my list|the list))$/.test(t))
+    return { kind: "newVisit" };
   if (/^((talk|speak|go) )?(slower|more slowly|slow down)$/.test(t)) return { kind: "slower" };
   if (/^((talk|speak|go) )?(faster|quicker|more quickly|speed up)$/.test(t)) return { kind: "faster" };
   if (/^(repeat|again|repeat that|say (that|it) again|what did you say|pardon|sorry)$/.test(t)) return { kind: "repeat" };

@@ -55,7 +55,9 @@ Targets: secondary buttons at least 76px tall. The main button takes at least 30
 - The camera is on only while aiming and taking each photo, never while describing or listening.
 
 ## Visit memory
-- The app remembers the last 8 exhibits it described in this browser tab (cleared when the tab closes) and tells Gemini about them.
+- **Exhibits visited:** a plain numbered list under the answer, in the order first described (no duplicates, up to 30, the latest in bold). It lasts for the browser tab, so a reload keeps it and closing the tab starts a new visit.
+- Say **"What have I seen?"** to hear it ("You've visited 3 exhibits: …"), or **"New visit"** to clear it.
+- Gemini gets the 8 most recent before every explanation: a new exhibit opens with one short link to an earlier one when there's a real connection ("Like the Tyrannosaurus rex you saw earlier, …"), and follow-up questions can compare ("which was bigger, this or the T. rex?").
 - **Help me aim** steers toward something the person hasn't heard about yet. If only a familiar exhibit is in view, it says "That's the … you already heard about. Turn to find something new, or tap the screen to hear it again" (repeated at most every 12 s) and doesn't take the photo on its own. A tap still takes it.
 - Pointing at a familiar exhibit on purpose gets "This is the … again." and different details, not a repeat of the first description.
 

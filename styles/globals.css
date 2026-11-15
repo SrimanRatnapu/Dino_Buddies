@@ -403,6 +403,48 @@ body {
   line-height: 1.2;
 }
 
+/* The visit so far: a plain numbered list under the answer. */
+.visited {
+  padding: 14px 16px;
+  border: 2px solid var(--surface-2);
+  border-radius: var(--radius-lg);
+}
+
+.visited h2 {
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.125rem;
+  color: var(--accent);
+}
+
+.visited-count {
+  min-width: 1.8em;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  text-align: center;
+  font-size: 1rem;
+}
+
+.visited ol {
+  margin: 0;
+  padding-left: 1.6em;
+  display: grid;
+  gap: 4px;
+}
+
+.visited li {
+  color: var(--text-muted);
+}
+
+.visited li:last-child {
+  color: var(--text);
+  font-weight: 700;
+}
+
 .answer h2:focus {
   outline: none;
 }

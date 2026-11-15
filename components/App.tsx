@@ -98,24 +98,36 @@ function writePref(key: string, value: string) {
  * tab's lifetime (sessionStorage), so a reload mid-visit keeps it and a new
  * visit starts fresh. Sent to Gemini so it names repeats and guides to new things.
  */
-const SEEN_KEY = "seen";
+const VISITED_KEY = "visited";
+/** Older builds kept only the last 8, under this key. */
+const OLD_SEEN_KEY = "seen";
+const MAX_VISITED = 30;
+/** How many of the most recent exhibits Gemini is told about. */
 const MAX_SEEN = 8;
 
-function readSeen(): string[] {
+function readVisited(): string[] {
   try {
-    const v = JSON.parse(sessionStorage.getItem(SEEN_KEY) ?? "[]");
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(-MAX_SEEN) : [];
+    const raw = sessionStorage.getItem(VISITED_KEY) ?? sessionStorage.getItem(OLD_SEEN_KEY) ?? "[]";
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(-MAX_VISITED) : [];
   } catch {
     return [];
   }
 }
 
-function writeSeen(seen: string[]) {
+function writeVisited(visited: string[]) {
   try {
-    sessionStorage.setItem(SEEN_KEY, JSON.stringify(seen));
+    sessionStorage.setItem(VISITED_KEY, JSON.stringify(visited));
+    sessionStorage.removeItem(OLD_SEEN_KEY);
   } catch {
-    /* storage unavailable: memory still works for this page */
+    /* storage unavailable: the list still works for this page */
   }
+}
+
+/** "the T. rex skeleton, a giraffe and a Triceratops skull", for speaking the list. */
+function spokenList(items: string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
 /** Result of one listening turn. */
@@ -147,7 +159,11 @@ export default function App() {
   // Values read after an await, where closure state could be stale.
   const imageRef = useRef<string | null>(null);
   const baseRef = useRef<DescribeSuccess | null>(null);
-  const seenRef = useRef<string[]>([]);
+  /** Exhibits visited this tab, in the order first described (the on-screen list). */
+  const visitedRef = useRef<string[]>([]);
+  const [visited, setVisited] = useState<string[]>([]);
+  /** What Gemini is told: the most recent few. */
+  const seenList = () => visitedRef.current.slice(-MAX_SEEN);
   const shownRef = useRef<Shown | null>(null);
   const errorTextRef = useRef("");
   const voiceOnRef = useRef(true);
@@ -181,7 +197,8 @@ export default function App() {
     const r = Number(readPref("rate"));
     if (RATES.includes(r)) rateRef.current = r;
     setMock(clientMockEnabled());
-    seenRef.current = readSeen();
+    visitedRef.current = readVisited();
+    setVisited(visitedRef.current);
     if (!recognitionSupported()) setTyping(true);
     const unsupported = cameraSupportError();
     if (unsupported) {
@@ -280,19 +297,35 @@ export default function App() {
   }
 
   /** Adds a described subject to the visit memory (most recent last, no duplicates). */
+  /** Adds a newly described exhibit to the visited list (first visit order, no duplicates). */
   function remember(subject: string) {
     const s = subject.trim();
-    if (!s) return;
-    const rest = seenRef.current.filter((x) => x.toLowerCase() !== s.toLowerCase());
-    seenRef.current = [...rest, s].slice(-MAX_SEEN);
-    writeSeen(seenRef.current);
+    if (!s || /^something i couldn't name$/i.test(s)) return;
+    if (visitedRef.current.some((x) => x.toLowerCase() === s.toLowerCase())) return;
+    visitedRef.current = [...visitedRef.current, s].slice(-MAX_VISITED);
+    setVisited(visitedRef.current);
+    writeVisited(visitedRef.current);
+  }
+
+  async function readVisitedAloud() {
+    const v = visitedRef.current;
+    if (!v.length) return say("You haven't visited any exhibits yet. Say I am here to start.");
+    const count = v.length === 1 ? "one exhibit" : `${v.length} exhibits`;
+    await say(`You've visited ${count}: ${spokenList(v)}.`);
+  }
+
+  async function newVisit() {
+    visitedRef.current = [];
+    setVisited([]);
+    writeVisited([]);
+    await say("Okay, new visit. Your list of exhibits is cleared.");
   }
 
   async function sendImage(image: string, lead?: string) {
     imageRef.current = image;
     setPhotoUrl(`data:image/jpeg;base64,${image}`);
     baseRef.current = null;
-    const seen = seenRef.current.length ? [...seenRef.current] : undefined;
+    const seen = visitedRef.current.length ? seenList() : undefined;
     await run({ image, mode: "default", seen }, "describe", undefined, lead);
   }
 
@@ -384,7 +417,7 @@ export default function App() {
           cue.nudge();
           void say(text);
         }
-      }, [...seenRef.current]);
+      }, seenList());
       if (stopCtrl.signal.aborted) return "stopped";
       if (!result) {
         // The camera stopped sending pictures (for example, another app took it).
@@ -531,6 +564,8 @@ export default function App() {
         mode: "default",
         question: text,
         previous: base ? { subject: base.subject, description: base.description } : undefined,
+        // So questions like "which was bigger, this or the T. rex?" work.
+        seen: visitedRef.current.length ? seenList() : undefined,
       },
       "answer",
       text,
@@ -562,6 +597,10 @@ export default function App() {
         return guide(fromTap);
       case "tour":
         return tour(fromTap);
+      case "visited":
+        return readVisitedAloud();
+      case "newVisit":
+        return newVisit();
       case "more":
         return more();
       case "repeat":
@@ -961,6 +1000,19 @@ export default function App() {
                 )}
               </div>
             </article>
+          )}
+
+          {visited.length > 0 && (
+            <section className="visited" aria-labelledby="visited-h">
+              <h2 id="visited-h">
+                Exhibits visited <span className="visited-count">{visited.length}</span>
+              </h2>
+              <ol>
+                {visited.map((v) => (
+                  <li key={v}>{v}</li>
+                ))}
+              </ol>
+            </section>
           )}
 
           {typing && !busy && (

@@ -53,9 +53,22 @@ const FIELDS_DETAILED = `The listener asked to hear more. They will hear only ca
 - subject, confidence, caveats and usable follow the usual rules.`;
 
 /** What the person already heard about this visit, so a repeat is named and gets new details. */
+const visitedList = (seen: string[]) => seen.map((s, i) => `${i + 1}. ${s}`).join("\n");
+
+/**
+ * The person's visit so far. Read before explaining: a repeat is named as such,
+ * and a new exhibit opens with one short link to an earlier one when a real one exists.
+ */
 function visitMemory(seen: string[] | undefined): string {
   if (!seen?.length) return "";
-  return `\n\nEarlier in this visit you already described: ${seen.map((s) => `"${s}"`).join(", ")}. If the camera now shows one of those same exhibits or animals, start description with a few words saying so, for example "This is the Tyrannosaurus rex skeleton again.", then describe details you would not lead with on a first look, such as a different part, the surroundings or the sign. If it is something different, ignore this list completely.`;
+  return `\n\nExhibits this person has already visited, in order:
+${visitedList(seen)}
+
+Check this list before you explain.
+- If the camera shows one of those same exhibits or animals again, start description with a few words saying so, for example "This is the Tyrannosaurus rex skeleton again.", then describe details you would not lead with on a first look, such as a different part, the surroundings or the sign.
+- If it is something new and there is a real connection to one on the list (the same kind of animal or dinosaur, the same time period, predator and prey, or a clear size difference), start description with one short clause of under 12 words that makes it, for example "Like the Tyrannosaurus rex you saw earlier," or "About half the size of the giraffe you met,". Only use facts you are sure of.
+- If there is no real connection, don't mention the list at all. Never force a comparison.
+The opening clause counts toward the description's word limit.`;
 }
 
 export function describeUserPrompt(
@@ -78,10 +91,14 @@ export function followUpUserPrompt(
   question: string,
   previous: { subject: string; description: string } | undefined,
   mode: "default" | "detailed",
+  seen?: string[],
 ): string {
-  const context = previous
-    ? `Earlier you described this as "${previous.subject}": ${previous.description}`
-    : "There is no earlier description.";
+  const visited = seen?.length
+    ? `\n\nExhibits visited so far, in order (use them if the question compares or refers back, for example "which was bigger"):\n${visitedList(seen)}`
+    : "";
+  const context =
+    (previous ? `Earlier you described this as "${previous.subject}": ${previous.description}` : "There is no earlier description.") +
+    visited;
   const length =
     mode === "detailed"
       ? "Answer in about 60 to 100 words."
