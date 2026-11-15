@@ -2,7 +2,7 @@
 // Shared file: change only by agreement between A and B, and log the change
 // under CONTRACT CHANGES in CLAUDE.md.
 
-export const CONTRACT_VERSION = "v1.2";
+export const CONTRACT_VERSION = "v1.3";
 
 export type DescribeMode = "default" | "detailed";
 export type Confidence = "high" | "medium" | "low";
@@ -87,7 +87,10 @@ export interface AimResponse {
   already_seen?: boolean;
 }
 
-/** POST /api/speak request body. Response is audio/mpeg bytes. */
+/**
+ * POST /api/speak request body. Response (v1.3): audio bytes, audio/wav from
+ * the Gemini voice or audio/mpeg from Cloud TTS; treat any audio/* as playable.
+ */
 export interface SpeakRequest {
   text: string;
 }

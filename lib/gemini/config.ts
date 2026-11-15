@@ -16,6 +16,18 @@ export const GEMINI_FALLBACK_MODEL =
 export const AIM_MODEL = process.env.AIM_MODEL || "gemini-3.1-flash-lite";
 export const AIM_TIMEOUT_MS = Number(process.env.AIM_TIMEOUT_MS || 6000);
 
+/**
+ * Spoken voice for /api/speak. "gemini" (default) uses a Gemini text-to-speech
+ * model, falling back to Cloud Text-to-Speech if that fails; "cloud" uses
+ * Cloud Text-to-Speech only. Without either, the app uses the phone's voice.
+ */
+export const SPEAK_ENGINE = (process.env.SPEAK_ENGINE || "gemini").toLowerCase();
+export const SPEAK_MODEL = process.env.SPEAK_MODEL || "gemini-2.5-flash-preview-tts";
+/** Used once if SPEAK_MODEL returns 404 (Vertex AI may list the model under this name). */
+export const SPEAK_FALLBACK_MODEL = process.env.SPEAK_FALLBACK_MODEL || "gemini-2.5-flash-tts";
+/** A Gemini prebuilt voice, for example Kore, Aoede, Charon, Puck or Sulafat. */
+export const SPEAK_VOICE = process.env.SPEAK_VOICE || "Kore";
+
 /** Server-side hard timeout for one Gemini call. */
 export const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 15000);
 

@@ -22,7 +22,7 @@ Phones only allow camera access over HTTPS. To test on a phone locally, use `npx
 - **"Tell me more":** resend the same image with `mode: "detailed"` plus `previous`, which you already do. The server uses `previous` to add new detail instead of repeating.
 - **Follow-up:** send `question` plus `previous: {subject, description}`. Include the image if you have it, because it gives better answers. A text-only follow-up also works.
 - **Errors:** every non-200 has `error.message` written to be read aloud as-is. 422 `unclear_image` means retake the photo.
-- **`/api/speak`:** returns `audio/mpeg`, or a JSON error. Treat any non-200 as "use `speechSynthesis`". It's 503 until a key with the Cloud TTS API enabled is set.
+- **`/api/speak`:** returns audio in a Gemini AI voice (`audio/wav`, using the same key or Vertex AI setup as describe), or Cloud TTS (`audio/mpeg`) as a fallback, or a JSON error. Treat any non-200 as "use `speechSynthesis`". Change the voice with `SPEAK_VOICE`.
 - **Image:** a data-URL prefix is stripped if you send one, and PNG/WebP are accepted, but JPEG at 1024px long edge keeps latency down.
 - `GET /api/health` shows mock/real, model, and whether keys are set. It never shows the keys themselves.
 
@@ -32,7 +32,7 @@ Phones only allow camera access over HTTPS. To test on a phone locally, use `npx
 |---|---|
 | `app/api/describe/route.ts` | Contract v1 endpoint, mock + real |
 | `app/api/aim/route.ts` | Live aiming guidance for "Guide me" (contract v1.1) |
-| `app/api/speak/route.ts` | Google Cloud TTS, MP3 out |
+| `app/api/speak/route.ts` | Gemini voice (WAV), Cloud TTS fallback (MP3) |
 | `app/api/health/route.ts` | Status for A and deploys |
 | `lib/gemini/config.ts` | **The one place the model name lives** |
 | `lib/gemini/describe.ts` | Gemini call, structured JSON output, timeout, retries |

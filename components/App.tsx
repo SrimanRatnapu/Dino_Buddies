@@ -218,7 +218,7 @@ export default function App() {
     try {
       // Cloud voice has its own fixed rate, so a changed rate uses the phone's voice.
       const rate = rateRef.current;
-      await speak(text, { cloud: opts.cloud && rate === 1, rate });
+      await speak(text, { cloud: opts.cloud, rate });
     } finally {
       if (id === speakId.current) {
         speakingRef.current = false;

@@ -8,7 +8,7 @@ import { ApiFailure } from "@/lib/http/errors";
 import { USE_VERTEX, GCP_PROJECT, GCP_LOCATION } from "./config";
 
 let client: GoogleGenAI | null = null;
-function getClient(): GoogleGenAI {
+export function getClient(): GoogleGenAI {
   if (client) return client;
   if (USE_VERTEX) {
     // Vertex AI with Application Default Credentials: no key in the app.

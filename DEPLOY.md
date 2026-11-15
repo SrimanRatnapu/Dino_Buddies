@@ -41,6 +41,8 @@ gcloud projects add-iam-policy-binding $(gcloud config get-value project) --memb
 
 Then deploy with `--set-env-vars MOCK=0,GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=<project-id>,GOOGLE_CLOUD_LOCATION=global,GEMINI_MODEL=gemini-3.5-flash` and leave out `--set-secrets`. Usage is billed to the project's Cloud Billing account. `/api/health` shows `"gemini_auth": "vertex-adc"`.
 
-**TTS key:** `/api/speak` uses `GOOGLE_TTS_API_KEY`, falling back to `GEMINI_API_KEY`. That works only if the key's project has the Text-to-Speech API enabled and the key isn't restricted to the Gemini API. If speak returns 502, create a separate key for TTS and add it as a second secret.
+**Voice:** `/api/speak` uses a Gemini text-to-speech model with the same credentials as describe, so it needs nothing extra (on Vertex AI the service account's `roles/aiplatform.user` covers it). Check `/api/health`: `voice` should say `gemini (...)`. If the model isn't available to the project, the server logs a 404 and falls back to Cloud TTS, then to the phone's own voice.
+
+**Cloud TTS key (fallback only):** `/api/speak` uses `GOOGLE_TTS_API_KEY`, falling back to `GEMINI_API_KEY`. That works only if the key's project has the Text-to-Speech API enabled and the key isn't restricted to the Gemini API. If speak returns 502, create a separate key for TTS and add it as a second secret.
 
 **Fallback if Cloud Run fights you:** Firebase App Hosting deploys Next.js straight from GitHub. Set the same secret there. Don't spend more than 30 minutes on hosting. A laptop running `npm run build && npm start` behind `npx localtunnel` or similar still demos.

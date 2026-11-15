@@ -48,7 +48,7 @@ Only the owner edits these. If you need a change in the other side's area, ask t
 - **Shared, change only by agreement:** the contract below, `/shared/contract.ts` (types mirroring it), this file
 
 ## The contract (interface between A and B)
-Version: **v1.2** (v1, plus `POST /api/aim` in v1.1, plus the optional visit memory `seen` in v1.2). Any change bumps the version and gets logged under `CONTRACT CHANGES`. Neither side changes shapes silently.
+Version: **v1.3** (v1, plus `POST /api/aim` in v1.1, the optional visit memory `seen` in v1.2, and the Gemini voice on `/api/speak` in v1.3). Any change bumps the version and gets logged under `CONTRACT CHANGES`. Neither side changes shapes silently.
 
 ### `POST /api/describe`
 Request (JSON):
@@ -88,7 +88,7 @@ Request: `{ "image": "base64 JPEG, long edge about 512px, no data: prefix", "see
 Response (200): `{ "status": "ready | adjust | searching", "move": "left | right | up | down | back | closer | none", "subject": "string", "already_seen": false }`. `already_seen` (v1.2) is true only when `seen` was sent and the attraction being guided to is on it; the client then doesn't auto-capture. `move` is `none` unless `status` is `adjust`. Image left is the user's left. Errors use the same JSON as `/api/describe`. Any error means "stop guiding and just take the photo".
 
 ### `POST /api/speak` (optional, B builds if time allows)
-Request: `{ "text": "string" }`. Response: `audio/mpeg` bytes from Google Cloud Text-to-Speech.
+Request: `{ "text": "string" }`. Response: audio bytes, `audio/wav` from a Gemini text-to-speech model (default, v1.3) or `audio/mpeg` from Google Cloud Text-to-Speech. Any `audio/*` type is playable.
 If this endpoint is missing or fails, A falls back to the browser's `speechSynthesis`. A should build the fallback first so the demo never depends on this endpoint.
 
 ### Mock mode
@@ -177,6 +177,11 @@ Times are relative to kickoff. Replace with real clock times once demos are sche
   - The client keeps the subjects of the last 8 first-look descriptions for the browser tab's lifetime (`sessionStorage`) and sends them as optional `seen` on `/api/describe` (first looks only) and `/api/aim`.
   - `/api/aim` prefers an attraction not in `seen` and returns `already_seen: true` when only a familiar one is in view. The client then says "That's the … you already heard about. Turn to find something new, or tap the screen to hear it again" and doesn't auto-capture; a tap still takes it.
   - `/api/describe` names a repeat ("This is the … again.") and leads with different details. Server validation: `parseSeen()` in `lib/gemini/validate.ts`. Requests without `seen` behave exactly as v1.1.
+
+- **2026-11-15, A (Sriman asked for a Gemini AI voice): v1.3, response type only.**
+  - `/api/speak` now tries a Gemini TTS model first (`SPEAK_MODEL`, default `gemini-2.5-flash-preview-tts`, 404 fallback `gemini-2.5-flash-tts`; voice `SPEAK_VOICE`, default Kore; style prompt in `/prompts/speak.ts`), using the same key or Vertex AI credentials as describe. It returns `audio/wav` (Gemini's PCM wrapped in a WAV header). On failure it falls back to Cloud TTS (`audio/mpeg`) if a TTS key is set. `SPEAK_ENGINE=cloud` restores the old behaviour.
+  - Client: answers are sent in pieces of about 240 characters so the first plays quickly; every fetched clip is cached by text, so Repeat and common short phrases play instantly; short phrases play in the browser voice the first time while the AI version is fetched. "Slower" and "faster" now apply to the AI voice (playback rate). Any failure still falls back to `speechSynthesis`.
+  - `/api/health` shows the active `voice`.
 
 ## Backup ideas (only if this stalls)
 - Wildlife Rehab Triage: identify an injured animal, give "intervene or leave it" guidance, and look up the nearest rehabber with Maps.

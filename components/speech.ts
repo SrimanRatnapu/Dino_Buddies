@@ -1,14 +1,26 @@
 // Spoken output. Browser speechSynthesis is the baseline and always works
-// offline; Google Cloud TTS via POST /api/speak is an optional upgrade that is
-// tried first for long text and dropped silently if missing or slow.
+// offline. The AI voice (Gemini text-to-speech, or Cloud TTS, via POST
+// /api/speak) is an upgrade: long answers are fetched a few sentences at a
+// time so the first plays quickly, short phrases are cached so they play
+// instantly after the first time, and any failure falls back to the browser.
 
-const CLOUD_TIMEOUT_MS = 4000;
+/** First piece of a long answer: waiting longer than this is worse than the robot voice. */
+const FIRST_PIECE_TIMEOUT_MS = 7000;
+const LATER_PIECE_TIMEOUT_MS = 15000;
+/** Long answers are sent in pieces of about this many characters (whole sentences). */
+const PIECE_CHARS = 240;
+/** Short phrases (cues, aiming instructions) are cached in the AI voice after first use. */
+const SHORT_PHRASE_CHARS = 160;
+const CACHE_MAX = 80;
 
 let token = 0;
 let audio: HTMLAudioElement | null = null;
-/** Cloud TTS is skipped until this time (ms since epoch). Infinity = for the session. */
+/** The AI voice is skipped until this time (ms since epoch). Infinity = for the session. */
 let cloudOffUntil = 0;
 const CLOUD_RETRY_MS = 120_000;
+/** Audio already fetched, by exact text: Repeat and common phrases play instantly. */
+const cache = new Map<string, Blob>();
+const inFlight = new Map<string, Promise<Blob | null>>();
 
 /** A tiny silent WAV, used to unlock audio playback on iOS inside a tap. */
 function silentWavUrl(): string {
@@ -54,53 +66,118 @@ export function stopSpeaking(): void {
 }
 
 export interface SpeakOptions {
-  /** Try Google Cloud TTS first. Use for descriptions, not short cues. */
+  /** Use the AI voice now, even though the first piece takes a moment. For answers, not cues. */
   cloud?: boolean;
   rate?: number;
 }
+
+const cloudUsable = () => Date.now() >= cloudOffUntil;
 
 /** Speak text, interrupting anything already playing. Resolves when done or stopped. */
 export async function speak(text: string, opts: SpeakOptions = {}): Promise<void> {
   stopSpeaking();
   const my = token;
+  const rate = opts.rate ?? 1;
   if (!text.trim()) return;
-  if (opts.cloud && Date.now() >= cloudOffUntil) {
-    const done = await speakCloud(text, my);
-    if (done || my !== token) return;
+  const cached = cache.get(text);
+  if (cached && cloudUsable()) {
+    if (await playBlob(cached, my, rate)) return;
+    if (my !== token) return;
+  } else if (opts.cloud && cloudUsable()) {
+    if (await speakCloud(text, my, rate)) return;
+    if (my !== token) return;
+  } else if (text.length <= SHORT_PHRASE_CHARS && cloudUsable()) {
+    // Say it now in the browser voice, and fetch the AI voice for next time.
+    void fetchAudio(text, LATER_PIECE_TIMEOUT_MS);
   }
-  await speakBrowser(text, my, opts.rate ?? 1);
+  await speakBrowser(text, my, rate);
 }
 
-async function speakCloud(text: string, my: number): Promise<boolean> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), CLOUD_TIMEOUT_MS);
-  try {
-    const res = await fetch("/api/speak", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-      signal: ctrl.signal,
-    });
-    clearTimeout(timer);
-    const type = res.headers.get("content-type") ?? "";
-    if (!res.ok || !type.startsWith("audio/")) {
-      // Not built (404/501) or not configured (503): skip for the session.
-      // Upstream failure (502) or a non-audio reply: skip for a while.
-      // Anything else (too long, rate limited, timeout) affects only this one.
-      if ([404, 501, 503].includes(res.status)) cloudOffUntil = Infinity;
-      else if (res.status === 502 || res.ok) cloudOffUntil = Date.now() + CLOUD_RETRY_MS;
-      return false;
+/** Groups sentences into pieces of about PIECE_CHARS. */
+function pieces(text: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  for (const sentence of chunks(text)) {
+    if (cur && cur.length + sentence.length + 1 > PIECE_CHARS) {
+      out.push(cur);
+      cur = sentence;
+    } else {
+      cur = cur ? `${cur} ${sentence}` : sentence;
     }
-    const blob = await res.blob();
-    if (my !== token) return true;
-    return await playBlob(blob, my);
-  } catch {
-    clearTimeout(timer);
-    return false;
   }
+  if (cur) out.push(cur);
+  return out;
 }
 
-function playBlob(blob: Blob, my: number): Promise<boolean> {
+/** Fetches (or reuses) the AI voice for one piece of text. Null on any failure. */
+function fetchAudio(text: string, timeoutMs: number): Promise<Blob | null> {
+  const hit = cache.get(text);
+  if (hit) return Promise.resolve(hit);
+  const pending = inFlight.get(text);
+  if (pending) return pending;
+  const p = (async () => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch("/api/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+        signal: ctrl.signal,
+      });
+      const type = res.headers.get("content-type") ?? "";
+      if (!res.ok || !type.startsWith("audio/")) {
+        // Not built (404/501) or not configured (503): skip for the session.
+        // Upstream failure (502) or a non-audio reply: skip for a while.
+        // Anything else (too long, rate limited, timeout) affects only this one.
+        if ([404, 501, 503].includes(res.status)) cloudOffUntil = Infinity;
+        else if (res.status === 502 || res.ok) cloudOffUntil = Date.now() + CLOUD_RETRY_MS;
+        return null;
+      }
+      const blob = await res.blob();
+      cache.set(text, blob);
+      if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
+      return blob;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+      inFlight.delete(text);
+    }
+  })();
+  inFlight.set(text, p);
+  return p;
+}
+
+/**
+ * Plays text in the AI voice, a few sentences at a time, fetching the next
+ * piece while the current one plays. Returns false if the first piece can't
+ * be had (the caller then uses the browser voice); later failures finish the
+ * rest in the browser voice.
+ */
+async function speakCloud(text: string, my: number, rate: number): Promise<boolean> {
+  const parts = pieces(text);
+  const fetched: Array<Promise<Blob | null>> = [];
+  const get = (i: number) =>
+    (fetched[i] ??= fetchAudio(parts[i], i === 0 ? FIRST_PIECE_TIMEOUT_MS : LATER_PIECE_TIMEOUT_MS));
+  get(0);
+  if (parts.length > 1) get(1);
+  for (let i = 0; i < parts.length; i++) {
+    const blob = await get(i);
+    if (my !== token) return true;
+    if (i + 2 < parts.length) get(i + 2);
+    const ok = blob ? await playBlob(blob, my, rate) : false;
+    if (my !== token) return true;
+    if (!ok) {
+      if (i === 0) return false;
+      await speakBrowser(parts.slice(i).join(" "), my, rate);
+      return true;
+    }
+  }
+  return true;
+}
+
+function playBlob(blob: Blob, my: number, rate = 1): Promise<boolean> {
   if (!audio) {
     audio = new Audio();
     audio.setAttribute("playsinline", "");
@@ -108,9 +185,15 @@ function playBlob(blob: Blob, my: number): Promise<boolean> {
   const el = audio;
   const url = URL.createObjectURL(blob);
   el.src = url;
+  // "Slower" and "faster" apply to the AI voice too, without changing its pitch.
+  el.playbackRate = rate;
+  el.preservesPitch = true;
   return new Promise<boolean>((resolve) => {
     let watch = 0;
+    let done = false;
     const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
       el.removeEventListener("ended", onEnd);
       el.removeEventListener("error", onErr);
       el.removeEventListener("pause", onEnd);
