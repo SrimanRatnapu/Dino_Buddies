@@ -44,7 +44,7 @@ export async function describe(req: ParsedRequest): Promise<DescribeResult> {
   parts.push({
     text: req.question
       ? followUpUserPrompt(req.question, req.previous, req.mode)
-      : describeUserPrompt(req.mode, req.previous),
+      : describeUserPrompt(req.mode, req.previous, req.seen),
   });
 
   const started = Date.now();

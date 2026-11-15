@@ -19,6 +19,13 @@ Answer with:
 - status "searching" with move "none" when there is no clear attraction in view: only floor, wall or ceiling, heavy blur, darkness, or a finger over the lens.
 
 subject: two to four words naming the attraction, for example "dinosaur skeleton" or "giraffe". Use an empty string when searching.
-Be decisive. Prefer "ready" once the attraction is fully in view, even if framing is not perfect.`;
+Be decisive. Prefer "ready" once the attraction is fully in view, even if framing is not perfect.
 
-export const AIM_USER_PROMPT = "Where is the main attraction in this frame, and which way should the phone move?";
+The request may list attractions the person already heard about during this visit. Prefer one they have not heard about: if a different clear attraction is in view, choose that one and guide toward it, even if a familiar one is larger. Set already_seen to true only when the attraction you are reporting is one on that list, because nothing new is in view. Otherwise set already_seen to false.`;
+
+const AIM_QUESTION = "Where is the main attraction in this frame, and which way should the phone move?";
+
+export function aimUserPrompt(seen?: string[]): string {
+  if (!seen?.length) return AIM_QUESTION;
+  return `${AIM_QUESTION}\n\nAlready heard about during this visit: ${seen.map((s) => `"${s}"`).join(", ")}.`;
+}

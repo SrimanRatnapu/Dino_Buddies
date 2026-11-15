@@ -46,6 +46,11 @@ Targets: secondary buttons at least 76px tall. The main button takes at least 30
 - Keys (Bluetooth keyboards and switch devices): **D** describe, **G** guide me, **T** take it now (while guiding), **A** ask, **R** repeat, **M** more, **S** stop, **Esc** cancel or stop. Exposed with `aria-keyshortcuts`. Letter keys work only while focus is on the result or the action buttons (WCAG 2.1.4, character key shortcuts), so a stray key or speech input elsewhere can't trigger them. Esc works anywhere. After each result, focus lands on the result title, so the keys work straight away.
 - Saying "describe" when the camera is off can't open the photo picker (browsers require a tap), so the app says so and points to the Describe button.
 
+## Visit memory
+- The app remembers the last 8 exhibits it described in this browser tab (cleared when the tab closes) and tells Gemini about them.
+- **Help me aim** steers toward something the person hasn't heard about yet. If only a familiar exhibit is in view, it says "That's the … you already heard about. Turn to find something new, or tap the screen to hear it again" (repeated at most every 12 s) and doesn't take the photo on its own. A tap still takes it.
+- Pointing at a familiar exhibit on purpose gets "This is the … again." and different details, not a repeat of the first description.
+
 ## Screen readers
 - **App voice** toggle in the header, on by default. Turning it off sends results to the user's own screen reader (VoiceOver or TalkBack) through a polite live region instead of the app's voice, so the two don't talk over each other. The setting is saved per device.
 - Focus moves to the result title or the error message when they appear, so the next swipe starts there.

@@ -81,6 +81,31 @@ function writePref(key: string, value: string) {
   }
 }
 
+/**
+ * Visit memory: subjects described so far, oldest first. Kept for the browser
+ * tab's lifetime (sessionStorage), so a reload mid-visit keeps it and a new
+ * visit starts fresh. Sent to Gemini so it names repeats and guides to new things.
+ */
+const SEEN_KEY = "seen";
+const MAX_SEEN = 8;
+
+function readSeen(): string[] {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(SEEN_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(-MAX_SEEN) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSeen(seen: string[]) {
+  try {
+    sessionStorage.setItem(SEEN_KEY, JSON.stringify(seen));
+  } catch {
+    /* storage unavailable: memory still works for this page */
+  }
+}
+
 /** Result of one listening turn. */
 type Heard = { kind: "text"; text: string } | { kind: "silence" } | { kind: "stopped" } | { kind: "unavailable" };
 
@@ -108,6 +133,7 @@ export default function App() {
   // Values read after an await, where closure state could be stale.
   const imageRef = useRef<string | null>(null);
   const baseRef = useRef<DescribeSuccess | null>(null);
+  const seenRef = useRef<string[]>([]);
   const shownRef = useRef<Shown | null>(null);
   const errorTextRef = useRef("");
   const voiceOnRef = useRef(true);
@@ -139,6 +165,7 @@ export default function App() {
     const r = Number(readPref("rate"));
     if (RATES.includes(r)) rateRef.current = r;
     setMock(clientMockEnabled());
+    seenRef.current = readSeen();
     if (!recognitionSupported()) setTyping(true);
     const unsupported = cameraSupportError();
     if (unsupported) {
@@ -227,6 +254,7 @@ export default function App() {
       return;
     }
     cue.done();
+    if (kind === "describe") remember(out.data.subject);
     if (kind === "describe" || !baseRef.current) baseRef.current = out.data;
     const next: Shown = { result: out.data, kind, question };
     shownRef.current = next;
@@ -234,11 +262,21 @@ export default function App() {
     await say(spokenText(out.data, kind), { cloud: true });
   }
 
+  /** Adds a described subject to the visit memory (most recent last, no duplicates). */
+  function remember(subject: string) {
+    const s = subject.trim();
+    if (!s) return;
+    const rest = seenRef.current.filter((x) => x.toLowerCase() !== s.toLowerCase());
+    seenRef.current = [...rest, s].slice(-MAX_SEEN);
+    writeSeen(seenRef.current);
+  }
+
   async function sendImage(image: string, lead?: string) {
     imageRef.current = image;
     setPhotoUrl(`data:image/jpeg;base64,${image}`);
     baseRef.current = null;
-    await run({ image, mode: "default" }, "describe", undefined, lead);
+    const seen = seenRef.current.length ? [...seenRef.current] : undefined;
+    await run({ image, mode: "default", seen }, "describe", undefined, lead);
   }
 
   /**
@@ -317,12 +355,14 @@ export default function App() {
         setAimView({ text, move: aim.move, ready: aim.status === "ready" });
         const last = lastInstruction.current;
         const now = Date.now();
-        if (text !== last.text || now - last.at > REPEAT_INSTRUCTION_MS) {
+        // "Already heard about" is a long sentence: repeat it less often than a short move.
+        const repeatAfter = aim.already_seen ? REPEAT_INSTRUCTION_MS * 3 : REPEAT_INSTRUCTION_MS;
+        if (text !== last.text || now - last.at > repeatAfter) {
           lastInstruction.current = { text, at: now };
           cue.nudge();
           void say(text);
         }
-      });
+      }, [...seenRef.current]);
       if (stopCtrl.signal.aborted) return;
       if (!result) {
         // The camera stopped sending pictures (for example, another app took it).
@@ -334,7 +374,9 @@ export default function App() {
       setAimView(null);
       cue.capture();
       const lead =
-        result.how === "timeout"
+        result.how === "timeout" && result.lastWasSeen
+          ? "I only found things you've already heard about, so I took the photo anyway."
+          : result.how === "timeout"
           ? "I couldn't find a clear view, so I took the photo anyway."
           : result.how === "unavailable"
             ? "Aiming help isn't working right now, so I took the photo."

@@ -10,6 +10,19 @@ export interface ParsedRequest {
   mode: DescribeMode;
   question?: string;
   previous?: { subject: string; description: string };
+  seen?: string[];
+}
+
+const MAX_SEEN = 8;
+
+/** Validates a `seen` list: up to 8 short, non-empty strings, most recent kept. */
+export function parseSeen(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.replace(/[\r\n"]+/g, " ").trim().slice(0, 80))
+    .filter(Boolean);
+  return items.length ? items.slice(-MAX_SEEN) : undefined;
 }
 
 /** Detects the real image type from magic bytes so a PNG or WebP still works. */
@@ -67,7 +80,7 @@ export function parseDescribeRequest(raw: unknown): ParsedRequest {
     throw new ApiFailure("bad_request", undefined, "missing image");
   }
 
-  return { image, mode, question, previous };
+  return { image, mode, question, previous, seen: parseSeen(body.seen) };
 }
 
 /** Internal model output: the contract fields plus `usable`. */

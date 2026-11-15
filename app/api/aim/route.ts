@@ -1,6 +1,6 @@
 import { aim } from "@/lib/gemini/aim";
 import { isMock } from "@/lib/gemini/config";
-import { parseImage } from "@/lib/gemini/validate";
+import { parseImage, parseSeen } from "@/lib/gemini/validate";
 import { ApiFailure, errorJson, rateLimitedJson } from "@/lib/http/errors";
 import { rateLimit } from "@/lib/http/rateLimit";
 import fixtures from "@/fixtures/aim.json";
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   if (wait) return rateLimitedJson(wait);
   if (Number(request.headers.get("content-length") || 0) > MAX_BODY_BYTES) return errorJson("image_too_large");
 
-  let raw: { image?: unknown } | null = null;
+  let raw: { image?: unknown; seen?: unknown } | null = null;
   try {
     raw = await request.json();
   } catch {
@@ -38,8 +38,11 @@ export async function POST(request: Request) {
       return Response.json(body, { headers: { "Cache-Control": "no-store", "X-Mock": "aim" } });
     }
 
-    const { body, model, ms } = await aim(image);
-    console.info(`[aim] ${body.status}${body.move !== "none" ? `:${body.move}` : ""} model=${model} ms=${ms}`);
+    const seen = parseSeen(raw?.seen);
+    const { body, model, ms } = await aim(image, seen);
+    console.info(
+      `[aim] ${body.status}${body.move !== "none" ? `:${body.move}` : ""}${body.already_seen ? " (already seen)" : ""} model=${model} ms=${ms}`,
+    );
     return Response.json(body, {
       headers: { "Cache-Control": "no-store", "Server-Timing": `gemini;dur=${ms}`, "X-Model": model },
     });

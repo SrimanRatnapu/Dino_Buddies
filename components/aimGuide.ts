@@ -29,10 +29,16 @@ export interface GuideResult {
   how: GuideEnd;
   /** What the aiming model last said was in view, if anything. */
   subject: string;
+  /** The last reply said the only attraction in view was one already described this visit. */
+  lastWasSeen: boolean;
 }
 
 /** Spoken instruction for an aiming reply. */
 export function instructionFor(aim: AimResponse, readyCount: number): string {
+  if (aim.already_seen) {
+    const what = aim.subject ? `the ${aim.subject.replace(/^(the|a|an)\s+/i, "")}` : "an exhibit";
+    return `That's ${what} you already heard about. Turn to find something new, or tap the screen to hear it again.`;
+  }
   if (aim.status === "ready") return readyCount >= READY_STREAK ? "Got it." : "Good. Hold still.";
   if (aim.status === "searching") return "I don't see an exhibit yet. Turn slowly.";
   const moves: Record<AimMove, string> = {
@@ -69,7 +75,7 @@ function timeoutSignal(ms: number): AbortSignal {
 
 let mockStep = 0;
 
-async function requestAim(image: string, signal: AbortSignal): Promise<AimResponse | null> {
+async function requestAim(image: string, signal: AbortSignal, seen: string[]): Promise<AimResponse | null> {
   if (clientMockEnabled()) {
     await sleep(500, signal);
     const seq = aimFixtures.sequence as AimResponse[];
@@ -80,7 +86,7 @@ async function requestAim(image: string, signal: AbortSignal): Promise<AimRespon
     const res = await fetch("/api/aim", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image }),
+      body: JSON.stringify(seen.length ? { image, seen } : { image }),
       signal: anySignal([signal, timeout]),
     });
     const body = (await res.json().catch(() => null)) as AimResponse | ApiError | null;
@@ -102,13 +108,16 @@ export async function guideToPhoto(
   stopSignal: AbortSignal,
   takeNowSignal: AbortSignal,
   onAim: (aim: AimResponse, readyCount: number) => void,
+  /** Subjects already described this visit; guidance prefers something new. */
+  seen: string[] = [],
 ): Promise<GuideResult | null> {
   const stop = await openCamera(video, stopSignal);
   if (!stop) return null;
 
+  let lastWasSeen = false;
   const take = (how: GuideEnd, subject: string): GuideResult | null => {
     const frame = captureFrame(video);
-    return frame ? { frame, how, subject } : null;
+    return frame ? { frame, how, subject, lastWasSeen } : null;
   };
 
   try {
@@ -125,7 +134,7 @@ export async function guideToPhoto(
 
       const small = captureFrame(video, AIM_EDGE, AIM_QUALITY);
       const sent = Date.now();
-      const aim = small ? await requestAim(small, either) : null;
+      const aim = small ? await requestAim(small, either, seen) : null;
       if (stopSignal.aborted) return null;
       if (takeNowSignal.aborted) return take("manual", subject);
 
@@ -136,7 +145,9 @@ export async function guideToPhoto(
       } else {
         failures = 0;
         if (aim.subject) subject = aim.subject;
-        ready = aim.status === "ready" ? ready + 1 : 0;
+        lastWasSeen = Boolean(aim.already_seen);
+        // Something already heard about is never auto-captured: the user taps to hear it again.
+        ready = aim.status === "ready" && !aim.already_seen ? ready + 1 : 0;
         onAim(aim, ready);
         if (ready >= READY_STREAK) return take("ready", subject);
       }

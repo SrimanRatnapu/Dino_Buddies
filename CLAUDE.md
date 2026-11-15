@@ -48,7 +48,7 @@ Only the owner edits these. If you need a change in the other side's area, ask t
 - **Shared, change only by agreement:** the contract below, `/shared/contract.ts` (types mirroring it), this file
 
 ## The contract (interface between A and B)
-Version: **v1.1** (v1 plus `POST /api/aim`). Any change bumps the version and gets logged under `CONTRACT CHANGES`. Neither side changes shapes silently.
+Version: **v1.2** (v1, plus `POST /api/aim` in v1.1, plus the optional visit memory `seen` in v1.2). Any change bumps the version and gets logged under `CONTRACT CHANGES`. Neither side changes shapes silently.
 
 ### `POST /api/describe`
 Request (JSON):
@@ -57,7 +57,8 @@ Request (JSON):
   "image": "base64 JPEG, long edge max 1024px, no data: prefix",
   "mode": "default | detailed",
   "question": "optional string for a follow-up",
-  "previous": { "subject": "string", "description": "string" }
+  "previous": { "subject": "string", "description": "string" },
+  "seen": ["optional (v1.2): subjects already described this visit, oldest first, max 8"]
 }
 ```
 Success response (200):
@@ -83,8 +84,8 @@ Rules:
 - The API key lives only on the server.
 
 ### `POST /api/aim` (v1.1, live aiming guidance)
-Request: `{ "image": "base64 JPEG, long edge about 512px, no data: prefix" }`, sent about once a second while the user holds the phone up.
-Response (200): `{ "status": "ready | adjust | searching", "move": "left | right | up | down | back | closer | none", "subject": "string" }`. `move` is `none` unless `status` is `adjust`. Image left is the user's left. Errors use the same JSON as `/api/describe`. Any error means "stop guiding and just take the photo".
+Request: `{ "image": "base64 JPEG, long edge about 512px, no data: prefix", "seen": ["optional (v1.2)"] }`, sent about once a second while the user holds the phone up.
+Response (200): `{ "status": "ready | adjust | searching", "move": "left | right | up | down | back | closer | none", "subject": "string", "already_seen": false }`. `already_seen` (v1.2) is true only when `seen` was sent and the attraction being guided to is on it; the client then doesn't auto-capture. `move` is `none` unless `status` is `adjust`. Image left is the user's left. Errors use the same JSON as `/api/describe`. Any error means "stop guiding and just take the photo".
 
 ### `POST /api/speak` (optional, B builds if time allows)
 Request: `{ "text": "string" }`. Response: `audio/mpeg` bytes from Google Cloud Text-to-Speech.
@@ -171,6 +172,11 @@ Times are relative to kickoff. Replace with real clock times once demos are sche
   - The tasteskill landing page is reverted (back to the UI after Guide me), then the app is redesigned around talking: one tap starts a conversation that listens, acts, speaks and listens again until the person says "pause" or is silent twice. A tap interrupts speech, pauses listening, or takes the photo while aiming.
   - New voice commands in `components/listen.ts`: help, pause or goodbye, slower and faster, and more ways to say "what's this". With App voice off (a screen reader is talking) it runs one turn per tap and never auto-listens.
   - `components/App.tsx` and `styles/globals.css` rewritten on your tokens (black and yellow, Atkinson Hyperlegible, 76px targets). Every earlier behaviour is kept: camera on only for the photo, Guide me, photo-picker fallback, typed fallback, shortcuts. `DEMO.md` steps 3 to 6 now follow the spoken flow.
+
+- **2026-11-15, A (Sriman asked for Gemini to remember the visit so guidance doesn't lead back to the same exhibit): v1.2, additive only.**
+  - The client keeps the subjects of the last 8 first-look descriptions for the browser tab's lifetime (`sessionStorage`) and sends them as optional `seen` on `/api/describe` (first looks only) and `/api/aim`.
+  - `/api/aim` prefers an attraction not in `seen` and returns `already_seen: true` when only a familiar one is in view. The client then says "That's the … you already heard about. Turn to find something new, or tap the screen to hear it again" and doesn't auto-capture; a tap still takes it.
+  - `/api/describe` names a repeat ("This is the … again.") and leads with different details. Server validation: `parseSeen()` in `lib/gemini/validate.ts`. Requests without `seen` behave exactly as v1.1.
 
 ## Backup ideas (only if this stalls)
 - Wildlife Rehab Triage: identify an injured animal, give "intervene or leave it" guidance, and look up the nearest rehabber with Maps.

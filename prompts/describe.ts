@@ -52,15 +52,24 @@ const FIELDS_DETAILED = `The listener asked to hear more. They will hear only ca
 - size_comparison and fun_fact: fill them for on-screen display, one sentence each.
 - subject, confidence, caveats and usable follow the usual rules.`;
 
+/** What the person already heard about this visit, so a repeat is named and gets new details. */
+function visitMemory(seen: string[] | undefined): string {
+  if (!seen?.length) return "";
+  return `\n\nEarlier in this visit you already described: ${seen.map((s) => `"${s}"`).join(", ")}. If the camera now shows one of those same exhibits or animals, start description with a few words saying so, for example "This is the Tyrannosaurus rex skeleton again.", then describe details you would not lead with on a first look, such as a different part, the surroundings or the sign. If it is something different, ignore this list completely.`;
+}
+
 export function describeUserPrompt(
   mode: "default" | "detailed",
   previous?: { subject: string; description: string },
+  seen?: string[],
 ): string {
   const earlier =
     mode === "detailed" && previous?.description
       ? `\n\nEarlier you said: "${previous.description}" Add new detail rather than repeating that.`
       : "";
-  return `Describe what the camera is pointed at.${earlier}
+  // "Tell me more" is about the same exhibit on purpose, so the visit list only applies to first looks.
+  const memory = mode === "default" ? visitMemory(seen) : "";
+  return `Describe what the camera is pointed at.${earlier}${memory}
 
 ${mode === "detailed" ? FIELDS_DETAILED : FIELDS_DEFAULT}`;
 }

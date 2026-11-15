@@ -2,7 +2,7 @@
 // Shared file: change only by agreement between A and B, and log the change
 // under CONTRACT CHANGES in CLAUDE.md.
 
-export const CONTRACT_VERSION = "v1.1";
+export const CONTRACT_VERSION = "v1.2";
 
 export type DescribeMode = "default" | "detailed";
 export type Confidence = "high" | "medium" | "low";
@@ -20,6 +20,11 @@ export interface DescribeRequest {
   question?: string;
   /** The earlier result this follow-up refers to. */
   previous?: { subject: string; description: string };
+  /**
+   * v1.2: subjects already described during this visit, oldest first (at most
+   * 8). On a first look, a repeat is named as such and given new details.
+   */
+  seen?: string[];
 }
 
 /** POST /api/describe 200 response. */
@@ -60,6 +65,8 @@ export interface ApiError {
 export interface AimRequest {
   /** Base64 JPEG, long edge about 512px, no `data:` prefix. */
   image: string;
+  /** v1.2: subjects already described during this visit. Guidance prefers something new. */
+  seen?: string[];
 }
 
 /** Which way to move the phone. Image left is the user's left (rear camera). */
@@ -73,6 +80,11 @@ export interface AimResponse {
   move: AimMove;
   /** A few words naming what's in view, or "" when searching. */
   subject: string;
+  /**
+   * v1.2: true when the attraction being guided to is one in `seen`, meaning
+   * nothing new is in view. The client doesn't auto-capture it. Absent or false otherwise.
+   */
+  already_seen?: boolean;
 }
 
 /** POST /api/speak request body. Response is audio/mpeg bytes. */
