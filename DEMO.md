@@ -17,6 +17,18 @@ npm run dev
   2. **Tunnel:** `npm run build && npm start`, then `cloudflared tunnel --url http://localhost:3000` in a second terminal, and open the `trycloudflare.com` link on the phone. University and venue Wi-Fi (eduroam) often block the tunnel service ("failed to request quick Tunnel … Client.Timeout"): put the laptop on the phone's hotspot and run it again.
   3. **Straight from the laptop:** laptop and phone on the same network (a phone hotspot works; eduroam usually blocks device-to-device traffic). Run `npm run dev:https`, open `https://<laptop-ip>:3000` on the phone and accept the certificate warning. Find the IP with `ipconfig getifaddr en0` on a Mac.
 
+## Laptop demo (fastest, most reliable)
+1. In the repo: `git pull`, then `npm install` if packages changed.
+2. Check `.env.local`: `MOCK=0`, and either `GEMINI_API_KEY=...` or the Vertex AI lines (`GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_CLOUD_PROJECT=...`, `GOOGLE_CLOUD_LOCATION=global`).
+3. Start it: `npm run build && npm start` (or `npm run dev`). Open **http://localhost:3000** in **Chrome**.
+4. Open http://localhost:3000/api/health once: `mock` should be `false` and `gemini_ready` `true`.
+5. Allow the camera and microphone when Chrome asks. Turn the laptop volume up.
+6. Hold the printed exhibit image (or a second screen) in front of the laptop camera, then click the big button once. It guides, takes the photo, describes it, and listens for a question.
+- **If Gemini or the network fails on stage:** open http://localhost:3000/?mock=1. It needs no server calls and walks through canned exhibits.
+- **To see what's happening:** add `?debug=1` for a panel showing the camera frame sent for aiming and what happened to each spoken line.
+- **If the voice sounds robotic:** that's the fallback voice; the demo still works. `npm run voice-check` shows why the AI voice isn't answering.
+- Use headphones or keep the volume moderate: the laptop microphone can hear the laptop's own speakers.
+
 ## Demo path (about 3 minutes)
 1. **Hook (slide):** Sriman with the Google dinosaur. Lifelong love of dinosaurs. "Museums are built to be looked at."
 2. **The problem:** blind and low-vision visitors are shut out of exhibits. Sriman's research on indoor wayfinding for visually impaired users (one line).

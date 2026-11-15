@@ -123,7 +123,10 @@ async function requestAim(image: string, signal: AbortSignal, seen: string[]): P
  */
 /** Frames darker than this (0 to 255) count as black: a muted or interrupted camera, or a covered lens. */
 const BLACK_BELOW = 4;
-const BLACK_FRAMES = 3;
+/** About 1.5 s of black before restarting the camera (a webcam can take a moment to warm up). */
+const BLACK_FRAMES = 5;
+/** After the restart, about 4 s more of black before giving up: only a dead or covered camera does that. */
+const BLACK_FRAMES_AFTER_RESTART = 12;
 
 /** The camera is on but its picture stays black, even after restarting it. */
 export class BlackCameraError extends Error {}
@@ -170,8 +173,9 @@ export async function guideToPhoto(
       // A black picture means the phone has interrupted the camera (or the lens is
       // covered). Asking Gemini about it only gets "I don't see an exhibit yet".
       if (brightness !== null && brightness < BLACK_BELOW) {
-        if (++blackFrames >= BLACK_FRAMES) {
-          if (restarted) throw new BlackCameraError("camera picture stays black");
+        blackFrames++;
+        if (restarted && blackFrames >= BLACK_FRAMES_AFTER_RESTART) throw new BlackCameraError("camera picture stays black");
+        if (!restarted && blackFrames >= BLACK_FRAMES) {
           logSound("camera picture is black: restarting the camera");
           restarted = true;
           blackFrames = 0;
@@ -179,6 +183,7 @@ export async function guideToPhoto(
           const again = await openCamera(video, stopSignal);
           if (!again) return null;
           stop = again;
+          await sleep(SETTLE_MS, stopSignal);
         }
         await sleep(300, either);
         continue;
