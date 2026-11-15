@@ -323,7 +323,11 @@ export default function App() {
           void say(text);
         }
       });
-      if (!result || stopCtrl.signal.aborted) return;
+      if (stopCtrl.signal.aborted) return;
+      if (!result) {
+        // The camera stopped sending pictures (for example, another app took it).
+        throw new CameraError("The camera stopped before I could take the photo.");
+      }
       // Camera is off now; guiding is over even while the description loads.
       if (guideRef.current === stopCtrl) guideRef.current = null;
       if (takeNowRef.current === takeNow) takeNowRef.current = null;
