@@ -12,7 +12,10 @@ npm run dev
 - **Real Gemini:** put your key in `.env.local` (copy `.env.example`, set `MOCK=0` and `GEMINI_API_KEY`), then `npm run dev`.
 - **Server mock:** `npm run dev:mock` serves B's fixtures from `/fixtures/describe.json` through the real route, so validation and error replies are exercised.
 - **In-browser mock:** add `?mock=1` to the URL. It needs no server call at all, so it's the offline backup on stage. It uses the same fixtures and cycles through T. rex skeleton (high confidence), Triceratops skull (medium, with caveat), giraffe, and an error. A "Demo data" badge shows it's on. Follow-up questions return the T. rex size answer.
-- **On a phone:** the camera needs https. Either deploy (Firebase Hosting or Cloud Run), or run `npm run dev:https` and open `https://<laptop-ip>:3000` on the phone, accepting the self-signed certificate warning. If the camera can't start, Describe opens the phone's own camera or photo picker, so the demo still works.
+- **On a phone:** the camera needs https. Three ways, most reliable first:
+  1. **Deploy** (Cloud Run, see `DEPLOY.md`): a permanent https link that works on any network. Best for judging.
+  2. **Tunnel:** `npm run build && npm start`, then `cloudflared tunnel --url http://localhost:3000` in a second terminal, and open the `trycloudflare.com` link on the phone. University and venue Wi-Fi (eduroam) often block the tunnel service ("failed to request quick Tunnel … Client.Timeout"): put the laptop on the phone's hotspot and run it again.
+  3. **Straight from the laptop:** laptop and phone on the same network (a phone hotspot works; eduroam usually blocks device-to-device traffic). Run `npm run dev:https`, open `https://<laptop-ip>:3000` on the phone and accept the certificate warning. Find the IP with `ipconfig getifaddr en0` on a Mac.
 
 ## Demo path (about 3 minutes)
 1. **Hook (slide):** Sriman with the Google dinosaur. Lifelong love of dinosaurs. "Museums are built to be looked at."
