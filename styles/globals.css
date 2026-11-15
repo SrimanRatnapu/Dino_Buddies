@@ -204,6 +204,9 @@
   .wd-btn--main { font-size: var(--t-body); }
 }
 
+/* the phone action bar would cover the app's own main button: step it away while the controls show */
+:root[data-app-in-view] body > nav.actionbar { transform: translateY(100%); visibility: hidden; }
+
 @media (prefers-reduced-motion: reduce) {
   .wd-pulse { animation: none; }
   .wd-aim .aim-icon { transition: none; }

@@ -194,7 +194,7 @@ export default function App() {
         fileRef.current?.click();
       } else {
         cue.error();
-        void say(`${cameraProblemRef.current} Tap Take a photo to choose a photo instead.`);
+        void say(`${cameraProblemRef.current} Tap the big button at the bottom to choose a photo instead.`);
       }
       return;
     }
@@ -241,7 +241,11 @@ export default function App() {
             void say(text);
           }
         });
-        if (!result || stopCtrl.signal.aborted) return;
+        if (stopCtrl.signal.aborted) return;
+        if (!result) {
+          // The camera stopped sending pictures (for example, another app took it).
+          throw new CameraError("The camera stopped before I could take the photo.");
+        }
         // Camera is off now; guiding is over even while the description loads.
         if (guideRef.current === stopCtrl) guideRef.current = null;
         if (takeNowRef.current === takeNow) takeNowRef.current = null;
@@ -260,7 +264,7 @@ export default function App() {
         cameraProblemRef.current = reason;
         setCameraProblem(reason);
         cue.error();
-        const msg = `${reason} Tap Take a photo to choose a photo instead.`;
+        const msg = `${reason} Tap the big button at the bottom to choose a photo instead.`;
         setErrorText(msg);
         setPhase("error");
         void say(msg);
@@ -303,7 +307,7 @@ export default function App() {
       cameraProblemRef.current = reason;
       setCameraProblem(reason);
       cue.error();
-      const msg = `${reason} Tap Take a photo to choose a photo instead.`;
+      const msg = `${reason} Tap the big button at the bottom to choose a photo instead.`;
       setErrorText(msg);
       setPhase("error");
       void say(msg);
@@ -474,6 +478,8 @@ export default function App() {
   actions.current = { describe, guide, takeNow, more, listen, repeat, stop, cancel };
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
+  const speakingRef = useRef(speaking);
+  speakingRef.current = speaking;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -485,7 +491,12 @@ export default function App() {
       const a = actions.current;
       const busy = phaseRef.current !== "idle" && phaseRef.current !== "result" && phaseRef.current !== "error";
       const k = e.key.toLowerCase();
-      if (k === "escape") busy ? a.cancel() : a.stop();
+      // Esc also closes the page's menu and accordions: only act when the app is busy or talking.
+      if (k === "escape") {
+        if (busy) a.cancel();
+        else if (speakingRef.current) a.stop();
+        else return;
+      }
       else if (!target?.closest("[data-shortcuts]")) return;
       else if (phaseRef.current === "guiding" && k === "t") a.takeNow();
       else if (busy) return;
@@ -514,6 +525,25 @@ export default function App() {
     };
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);
+  }, []);
+
+  // The page's phone action bar is fixed to the bottom of the screen, right where the app's own main
+  // button sits. Hide it while the app's controls are on screen, so a thumb at the bottom always
+  // reaches the app (system.css hides it for [data-app-in-view]).
+  const controlsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = controlsRef.current;
+    if (!el || !("IntersectionObserver" in window)) return;
+    const root = document.documentElement;
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) root.dataset.appInView = "";
+      else delete root.dataset.appInView;
+    });
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      delete root.dataset.appInView;
+    };
   }, []);
 
   const busy = phase === "capturing" || phase === "guiding" || phase === "looking" || phase === "listening";
@@ -621,7 +651,7 @@ export default function App() {
               )}
 
               {phase === "result" && r && (
-                <div className="wd-result" aria-labelledby="result-title">
+                <section className="wd-result" aria-labelledby="result-title">
                   {shown.question && <p className="wd-asked">You asked: “{shown.question}”</p>}
                   <h3 id="result-title" ref={headingRef} tabIndex={-1}>
                     {r.subject}
@@ -645,7 +675,7 @@ export default function App() {
                       {r.fun_fact}
                     </p>
                   )}
-                </div>
+                </section>
               )}
 
               {phase === "error" && (
@@ -667,7 +697,7 @@ export default function App() {
               )}
             </div>
 
-            <div className="wd-controls" role="group" aria-label="App actions" data-shortcuts>
+            <div className="wd-controls" role="group" aria-label="App actions" data-shortcuts ref={controlsRef}>
               {phase === "result" && (
                 <div className="wd-row">
                   {speaking ? (
