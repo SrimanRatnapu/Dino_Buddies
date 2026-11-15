@@ -192,6 +192,11 @@ Times are relative to kickoff. Replace with real clock times once demos are sche
   - Cause 1 (API key mode): the SDK defaults the Gemini API to `v1`, which rejects `speechConfig` ("Unknown name speechConfig at generation_config"), so every voice request failed and the app quietly used the phone voice. The key client now uses `v1beta`. Vertex AI mode already used `v1beta1`.
   - Cause 2 (likely on Vertex): the voice model names were 2.5-era guesses. The server now tries `SPEAK_MODELS` in order (`gemini-3.8-flash-tts`, `gemini-3.8-flash-lite-tts`, `gemini-3.1-flash-tts-preview`, then the 2.5 names) and remembers the first that works.
   - Client: the first audio piece is about one sentence and gets 10 s, so the voice starts sooner and slow first replies aren't dropped. New `npm run voice-check` diagnoses the voice with the real credentials.
+- **2026-11-15, B (Sriman asked to hear more about an exhibit visited earlier): no API or contract change, still v1.3.** A, this touched your files:
+  - New `components/visitMemory.ts`: for each exhibit this visit, what was said (description, "more", answers), when the visitor was last there, and a 512px copy of the photo, in `sessionStorage` (photos dropped oldest-first if storage fills).
+  - New voice command `recall` in `components/listen.ts`: "go back to the T. rex", "tell me more about the giraffe", "what about the Triceratops", "the last one", "the first one". Names match loosely ("T. rex" finds "Tyrannosaurus rex skeleton"). "Tell me about its teeth" with no matching exhibit stays a normal question.
+  - The app first asks "Hey, the … is an exhibit you visited 12 minutes ago. Would you like to know more about it?" and listens for yes or no (Yes and No buttons on screen too, the only way with App voice off). On yes it calls `/api/describe` in `detailed` mode with the saved photo and everything said before as `previous`, so Gemini adds new detail. Follow-up questions then stay on that exhibit, without changing its visit time.
+  - The visited list items are now buttons with "N minutes ago". Aiming's "already heard about" line now says how long ago. "New visit" clears the details too.
 
 ## Backup ideas (only if this stalls)
 - Wildlife Rehab Triage: identify an injured animal, give "intervene or leave it" guidance, and look up the nearest rehabber with Maps.

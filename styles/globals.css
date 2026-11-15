@@ -445,6 +445,63 @@ body {
   font-weight: 700;
 }
 
+/* Each visited exhibit is a button: tap to hear more about it. */
+.visit {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.visit-name {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.visit-when {
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+/* "Would you like to know more about it?" */
+.recall {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 3px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.recall p {
+  margin: 0;
+  font-weight: 700;
+}
+
+.recall-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+}
+
+.recall .btn-yes {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
 .answer h2:focus {
   outline: none;
 }

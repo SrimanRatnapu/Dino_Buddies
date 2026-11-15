@@ -22,11 +22,25 @@ import {
   listenErrorMessage,
   listenOnce,
   parseCommand,
+  parseYesNo,
   recognitionSupported,
   type VoiceCommand,
 } from "./listen";
 import { speak, stopSpeaking, unlockSpeech } from "./speech";
 import { spokenText, type ResultKind } from "./spokenText";
+import {
+  addSaid,
+  clearDetails,
+  contextOf,
+  findVisit,
+  keyOf,
+  readDetails,
+  shrinkImage,
+  theName,
+  timeAgo,
+  writeDetails,
+  type VisitRecord,
+} from "./visitMemory";
 
 export const APP_NAME = "Wildlife Described";
 
@@ -169,6 +183,17 @@ export default function App() {
   const [visited, setVisited] = useState<string[]>([]);
   /** What Gemini is told: the most recent few. */
   const seenList = () => visitedRef.current.slice(-MAX_SEEN);
+  /** What was said about each exhibit and when the visitor was there (visitMemory.ts). */
+  const detailsRef = useRef<Record<string, VisitRecord>>({});
+  const [details, setDetails] = useState<Record<string, VisitRecord>>({});
+  /** The earlier exhibit the app has just offered to say more about. */
+  const pendingRef = useRef<VisitRecord | null>(null);
+  const [pendingRecall, setPendingRecallState] = useState<VisitRecord | null>(null);
+  /** The earlier exhibit being talked about from somewhere else (its visit time stays as it was). */
+  const recalledKeyRef = useRef<string | null>(null);
+  const recallRef = useRef<HTMLElement>(null);
+  /** Re-renders "12 minutes ago" on the visited list. */
+  const [now, setNow] = useState(() => Date.now());
   const shownRef = useRef<Shown | null>(null);
   const errorTextRef = useRef("");
   const voiceOnRef = useRef(true);
@@ -203,6 +228,8 @@ export default function App() {
     if (RATES.includes(r)) rateRef.current = r;
     setMock(clientMockEnabled());
     visitedRef.current = readVisited();
+    detailsRef.current = readDetails();
+    setDetails(detailsRef.current);
     setVisited(visitedRef.current);
     if (!recognitionSupported()) setTyping(true);
     const unsupported = cameraSupportError();
@@ -295,6 +322,7 @@ export default function App() {
     cue.done();
     if (kind === "describe") remember(out.data.subject);
     if (kind === "describe" || !baseRef.current) baseRef.current = out.data;
+    noteVisit(kind, out.data, req.image);
     const next: Shown = { result: out.data, kind, question };
     shownRef.current = next;
     setShown(next);
@@ -312,6 +340,95 @@ export default function App() {
     writeVisited(visitedRef.current);
   }
 
+  function saveDetail(key: string, rec: VisitRecord) {
+    detailsRef.current = { ...detailsRef.current, [key]: rec };
+    setDetails(detailsRef.current);
+    writeDetails(detailsRef.current);
+  }
+
+  /**
+   * Remembers what was just said about the exhibit being talked about, so it can be
+   * recalled later from somewhere else. A first look also keeps a small copy of the photo.
+   */
+  function noteVisit(kind: ResultKind, data: DescribeSuccess, image?: string) {
+    const base = baseRef.current;
+    if (!base || /^something i couldn't name$/i.test(base.subject.trim())) return;
+    const key = keyOf(base.subject);
+    const prev = detailsRef.current[key];
+    let rec: VisitRecord = prev ?? { subject: base.subject.trim(), at: Date.now(), result: base, said: [] };
+    // Being at the exhibit (a photo of it, or questions while there) updates the time; recalling it from elsewhere doesn't.
+    if (kind === "describe" || recalledKeyRef.current !== key) rec = { ...rec, at: Date.now() };
+    rec = addSaid(rec, spokenText(data, kind));
+    saveDetail(key, rec);
+    if (kind === "describe" && image) {
+      void shrinkImage(image).then((thumb) => {
+        const cur = detailsRef.current[key];
+        if (thumb && cur) saveDetail(key, { ...cur, image: thumb });
+      });
+    }
+  }
+
+  function setPendingRecall(rec: VisitRecord | null) {
+    pendingRef.current = rec;
+    setPendingRecallState(rec);
+  }
+
+  /**
+   * "Hey, the T. rex skeleton is an exhibit you visited 12 minutes ago. Would you
+   * like to know more about it?" Then listens for yes or no; with a screen reader
+   * (or no microphone) the Yes and No buttons stay on screen instead.
+   */
+  async function offerRecall(rec: VisitRecord): Promise<void> {
+    setPendingRecall(rec);
+    await say(`Hey, ${theName(rec.subject)} is an exhibit you visited ${timeAgo(rec.at)}. Would you like to know more about it?`);
+    if (pendingRef.current !== rec) return; // answered with a button while speaking
+    if (!voiceOnRef.current || !recognitionSupported()) return;
+    const h = await hear();
+    if (pendingRef.current !== rec) return; // answered with a button while listening
+    setPendingRecall(null);
+    if (h.kind === "silence") return say("Okay, I'll leave it.");
+    if (h.kind !== "text") return;
+    setHeard(h.text);
+    const yn = parseYesNo(h.text);
+    if (yn === "yes") return recall(rec);
+    if (yn === "no") return say("Okay.");
+    await perform(parseCommand(h.text), false);
+  }
+
+  /** Says more about an earlier exhibit, from its saved photo and everything said about it before. */
+  async function recall(rec: VisitRecord) {
+    setPendingRecall(null);
+    const key = keyOf(rec.subject);
+    recalledKeyRef.current = key;
+    baseRef.current = rec.result;
+    imageRef.current = rec.image ?? null;
+    setPhotoUrl(rec.image ? `data:image/jpeg;base64,${rec.image}` : null);
+    const previous = { subject: rec.subject, description: contextOf(rec) };
+    const lead = `Going back to ${theName(rec.subject)}.`;
+    if (rec.image) await run({ image: rec.image, mode: "detailed", previous }, "more", undefined, lead);
+    // Photo not saved (storage full): a text-only follow-up still works.
+    else
+      await run(
+        { mode: "detailed", question: "Tell me more about it, with details you haven't mentioned yet.", previous },
+        "more",
+        undefined,
+        lead,
+      );
+  }
+
+  /** "Go back to the T. rex", "tell me more about the giraffe", "the last one". */
+  async function recallByName(cmd: Extract<VoiceCommand, { kind: "recall" }>, fromTap: boolean): Promise<void> {
+    const records = Object.values(detailsRef.current);
+    const currentKey = baseRef.current ? keyOf(baseRef.current.subject) : undefined;
+    const rec = findVisit(cmd.query, records, currentKey);
+    if (rec && keyOf(rec.subject) === currentKey) return more(); // the exhibit already being talked about
+    if (rec) return offerRecall(rec);
+    if (!cmd.nav) return askQuestion(cmd.text, fromTap); // "tell me about its teeth" is just a question
+    if (!records.length) return say("You haven't visited any exhibits yet, so there's nothing to go back to.");
+    const names = records.sort((a, b) => a.at - b.at).map((r) => theName(r.subject));
+    await say(`I couldn't tell which exhibit you meant. You've visited ${spokenList(names)}. Say go back to, and one of those.`);
+  }
+
   async function readVisitedAloud() {
     const v = visitedRef.current;
     if (!v.length) return say("You haven't visited any exhibits yet. Tap the screen to start the tour.");
@@ -323,10 +440,17 @@ export default function App() {
     visitedRef.current = [];
     setVisited([]);
     writeVisited([]);
+    detailsRef.current = {};
+    setDetails({});
+    clearDetails();
+    setPendingRecall(null);
+    recalledKeyRef.current = null;
     await say("Okay, new visit. Your list of exhibits is cleared.");
   }
 
   async function sendImage(image: string, lead?: string) {
+    recalledKeyRef.current = null;
+    setPendingRecall(null);
     imageRef.current = image;
     setPhotoUrl(`data:image/jpeg;base64,${image}`);
     baseRef.current = null;
@@ -411,7 +535,10 @@ export default function App() {
     if (!opts.tour) void say("Hold the phone up in front of you, and I'll help you aim. Tap the screen to take the photo yourself.");
     try {
       const result = await guideToPhoto(video, stopCtrl.signal, takeNow.signal, (aim, readyCount) => {
-        const text = instructionFor(aim, readyCount);
+        let text = instructionFor(aim, readyCount);
+        const before = aim.already_seen && aim.subject ? findVisit(aim.subject, Object.values(detailsRef.current)) : null;
+        if (before)
+          text = `That's ${theName(before.subject)}, which you visited ${timeAgo(before.at)}. Turn to find something new, or tap the screen to hear it again.`;
         setAimView({ text, move: aim.move, ready: aim.status === "ready" });
         const last = lastInstruction.current;
         const now = Date.now();
@@ -594,7 +721,7 @@ export default function App() {
   }
 
   /** Carries out one request, spoken or tapped. */
-  async function perform(cmd: VoiceCommand, fromTap: boolean) {
+  async function perform(cmd: VoiceCommand, fromTap: boolean): Promise<unknown> {
     switch (cmd.kind) {
       case "describe":
         return describe(fromTap);
@@ -604,6 +731,8 @@ export default function App() {
         return tour(fromTap);
       case "visited":
         return readVisitedAloud();
+      case "recall":
+        return recallByName(cmd, fromTap);
       case "newVisit":
         return newVisit();
       case "more":
@@ -853,6 +982,38 @@ export default function App() {
 
   // Keyboard: Space or Enter on the big button, Escape anywhere, and letter
   // shortcuts while focus is inside the app (WCAG 2.1.4: only on focus).
+  /** The Yes and No buttons under "Would you like to know more about it?" */
+  function answerRecall(yes: boolean) {
+    unlock();
+    const rec = pendingRef.current;
+    if (!rec) return;
+    setPendingRecall(null);
+    listenRef.current?.abort(); // the spoken yes-or-no isn't needed now
+    quiet();
+    if (!yes) {
+      cue.cancel(); // no spoken reply: a running conversation is about to listen again
+      announce("Okay.");
+      return;
+    }
+    void (async () => {
+      const wasTalking = talkingRef.current;
+      endConversation();
+      await recall(rec);
+      if (wasTalking && voiceOnRef.current) void converse();
+    })();
+  }
+
+  // The question goes to the top of the conversation and into view, so its buttons are never below the fold.
+  useEffect(() => {
+    if (pendingRecall) recallRef.current?.scrollIntoView({ block: "nearest" });
+  }, [pendingRecall]);
+
+  useEffect(() => {
+    if (!visited.length) return;
+    const id = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => window.clearInterval(id);
+  }, [visited.length]);
+
   function stopAll() {
     endTour();
     endConversation();
@@ -982,6 +1143,23 @@ export default function App() {
         </button>
 
         <section className="conversation" aria-label="Conversation">
+          {pendingRecall && !busy && (
+            <section className="recall" aria-labelledby="recall-q" ref={recallRef}>
+              <p id="recall-q">
+                {theName(pendingRecall.subject).replace(/^the /, "The ")}: you visited it {timeAgo(pendingRecall.at, now)}. Would you
+                like to know more about it?
+              </p>
+              <div className="recall-row">
+                <button type="button" className="btn btn-yes" onClick={() => answerRecall(true)}>
+                  Yes, tell me more
+                </button>
+                <button type="button" className="btn" onClick={() => answerRecall(false)}>
+                  No
+                </button>
+              </div>
+            </section>
+          )}
+
           {heard && (
             <p className="said">
               <span className="who">You said</span> “{heard}”
@@ -1030,9 +1208,22 @@ export default function App() {
                 Exhibits visited <span className="visited-count">{visited.length}</span>
               </h2>
               <ol>
-                {visited.map((v) => (
-                  <li key={v}>{v}</li>
-                ))}
+                {visited.map((v) => {
+                  const rec = details[keyOf(v)];
+                  return (
+                    <li key={v}>
+                      {rec ? (
+                        <button type="button" className="visit" onClick={() => void act({ kind: "recall", query: v, nav: true, text: v })}>
+                          <span className="visit-name">{v}</span>
+                          <span className="visit-when">{timeAgo(rec.at, now)}</span>
+                          <span className="sr-only">. Hear more about it</span>
+                        </button>
+                      ) : (
+                        v
+                      )}
+                    </li>
+                  );
+                })}
               </ol>
             </section>
           )}

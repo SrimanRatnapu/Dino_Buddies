@@ -112,6 +112,12 @@ export type VoiceCommand =
   | { kind: "tour" }
   | { kind: "visited" }
   | { kind: "newVisit" }
+  /**
+   * An earlier exhibit, by name or order ("go back to the T. rex", "the last one").
+   * `nav` is true for words that only make sense about an earlier exhibit ("go back
+   * to"), false for words that may just be a question ("tell me about its teeth").
+   */
+  | { kind: "recall"; query: string; nav: boolean; text: string }
   | { kind: "question"; text: string };
 
 /** What the app says when asked for help. Short enough to remember. */
@@ -121,6 +127,7 @@ export const HELP_TEXT =
   "Say help me aim, and I'll tell you which way to turn first. " +
   "After a description, ask any question, or say tell me more, or repeat. " +
   "Say what have I seen to hear the exhibits you've visited, or new visit to clear the list. " +
+  "To hear more about one you saw earlier, say go back to, and its name. " +
   "Say slower or faster to change my voice. Say pause when you're done, and tap the screen to wake me.";
 
 /** Maps what was heard to a command. Anything unrecognized is a follow-up question. */
@@ -151,6 +158,21 @@ export function parseCommand(heard: string): VoiceCommand {
   if (/^((talk|speak|go) )?(faster|quicker|more quickly|speed up)$/.test(t)) return { kind: "faster" };
   if (/^(repeat|again|repeat that|say (that|it) again|what did you say|pardon|sorry)$/.test(t)) return { kind: "repeat" };
   if (/^(more|tell me more|more details?|go on|keep going|and|what else)$/.test(t)) return { kind: "more" };
+  // An earlier exhibit. "Tell me more about it" is the current one, so it stays "more".
+  const nav =
+    /^(?:(?:let's |lets |can we |can you |i want to )?go back to|back to|return to|remind me (?:about|of)|what did you (?:say|tell me) about|what was (?:that|the) (?:thing )?about)\s+(.+)$/.exec(
+      t,
+    );
+  const ask =
+    /^(?:(?:can you |could you )?tell me (?:more |again )?about|more about|what about|(?:i want to |i'd like to |id like to )?(?:hear|know) more about|how about)\s+(.+)$/.exec(
+      t,
+    );
+  const order = /^(?:the )?(?:last|previous|first|other) (?:one|exhibit)(?: again)?$|^(?:the )?one before(?: this)?$/.test(t);
+  const target = (nav ?? ask)?.[1]?.trim();
+  if (target && /^(it|this|that|this one|that one|this exhibit|that exhibit|him|her|them)$/.test(target)) return { kind: "more" };
+  if (nav && target) return { kind: "recall", query: target, nav: true, text: heard.trim() };
+  if (order) return { kind: "recall", query: t, nav: true, text: heard.trim() };
+  if (ask && target) return { kind: "recall", query: target, nav: false, text: heard.trim() };
   if (/^(guide me|guide|help me aim|aim|help me point|where should i point|help me find it)$/.test(t)) return { kind: "guide" };
   if (
     /^(i am here|i'm here|im here|we're here|were here|we are here|start (the )?tour|tour|tour mode|explore|let's explore|lets explore|show me around|take me around|start exploring|what's around me|whats around me|what is around me)$/.test(
@@ -165,4 +187,12 @@ export function parseCommand(heard: string): VoiceCommand {
   )
     return { kind: "describe" };
   return { kind: "question", text: heard.trim() };
+}
+
+/** A spoken answer to a yes-or-no question, or null if it was something else. */
+export function parseYesNo(heard: string): "yes" | "no" | null {
+  const t = heard.toLowerCase().replace(/[.!?,]/g, "").trim();
+  if (/^(yes|yeah|yep|yup|sure|ok|okay|please|yes please|go ahead|go on|tell me|tell me more|sounds good|why not|of course|definitely)$/.test(t)) return "yes";
+  if (/^(no|nope|nah|no thanks|no thank you|not now|not really|never mind|nevermind|skip|skip it|that's ok|thats ok|i'm good|im good)$/.test(t)) return "no";
+  return null;
 }
